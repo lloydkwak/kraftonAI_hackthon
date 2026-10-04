@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>usvnav course editor</title>
+<!--
+  A course editor for Track 1, in one file with no dependencies.
+
+  It reads and writes `usvnav-course/2`, the same format the generator emits and the
+  scorer consumes (follow-up item 6), and it edits that JSON *in place* rather than
+  keeping a model beside it -- so what you save is what you loaded, minus your edits,
+  with no field silently added or dropped.
+
+  Why a browser and not a desktop toolkit: the machine has no GUI libraries and the
+  bundle a team receives must not grow one (6-R1 puts scoring on a machine with no
+  network, so every dependency ships). A single HTML file has no install step and works
+  from a file:// URL.
+
+  The checks in the sidebar are the subset that can be computed here. Ordered
+  connectivity (3-K9) needs the eroded free-space grid and stays in `usvnav validate`,
+  which the sidebar says so you do not mistake a clean panel for a valid course.
+
+  Orientation is +x right, +y up -- a map, not a sensor. 1-W3's raster mapping points +x
+  at the top of the image, which is right for a bow-up observation and wrong for an
+  authoring tool; `usvnav view` uses the same map orientation so the two agree.
+-->
+<style>
+  :root {
+    /* The MAP palette (usvnav/figure.py MAP_LOOK), not 4-V13's observation palette.
+       4-V13's eight values are constraint-solved so that anti-aliased boundary pixels
+       cannot land on a third class; they are not a style, and using them here made a
+       course read as a sensor frame -- magenta piers, teal barges. Nothing in the editor
+       is an observation, so it gets colours chosen for the eye instead. */
+    --water:#16303B; --shallow:#24444B; --bank:#77725C; --wet:#3E3B30;
+    --dock:#6B4F35; --pier:#7E7B73;
+    --vessel:#53606B; --ego:#F26E7A; --buoy:#F0C820; --outside:#101210;
+    --ink:#e8e8e8; --panel:#1d1f23; --line:#33373d; --warn:#ffcc44; --err:#ff6b6b;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; display:flex; height:100vh; font:13px/1.5 ui-sans-serif,system-ui,sans-serif;
+         background:#141619; color:var(--ink); }
+  #stage { flex:1; position:relative; }
+  canvas { display:block; width:100%; height:100%; cursor:crosshair; }
+  #side { width:330px; flex:none; background:var(--panel); border-left:1px solid var(--line);
+          overflow-y:auto; padding:10px 12px 40px; }
+  h1 { font-size:13px; margin:0 0 8px; font-weight:600; letter-spacing:.02em; }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#8b929c;
+       margin:16px 0 6px; border-top:1px solid var(--line); padding-top:10px; }
+  button, select, input { font:inherit; color:var(--ink); background:#282c32;
+       border:1px solid var(--line); border-radius:4px; padding:3px 7px; }
+  button { cursor:pointer; } button:hover { background:#343941; }
+  button.on { background:#3d6ea8; border-color:#4d84c4; }
+  .row { display:flex; gap:5px; flex-wrap:wrap; align-items:center; margin-bottom:5px; }
+  .row label { color:#8b929c; min-width:62px; }
+  input[type=number] { width:74px; }
+  #problems div { padding:4px 6px; border-radius:3px; margin-bottom:3px;
+                  background:#24272c; border-left:3px solid var(--line); }
+  #problems .error { border-left-color:var(--err); }
+  #problems .warning { border-left-color:var(--warn); }
+  #problems code { color:#8b929c; }
+  .hint { color:#7d848e; font-size:12px; }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:2px;
+        vertical-align:-1px; margin-right:4px; }
+  #hud { position:absolute; left:10px; bottom:10px; background:#0009; padding:4px 8px;
+         border-radius:4px; font-variant-numeric:tabular-nums; pointer-events:none; }
+</style>
+
+<div id="stage"><canvas id="c"></canvas><div id="hud"></div></div>
+
+<div id="side">
+  <h1>usvnav course editor</h1>
+  <div class="row">
+    <button id="bNew">New</button>
+    <button id="bOpen">Open…</button>
+    <button id="bSave">Save</button>
+    <input id="file" type="file" accept=".json" hidden>
+  </div>
+  <div class="hint">+x right, +y up. Metres. Scroll to zoom, drag empty water to pan.</div>
+
+  <h2>Add</h2>
+  <div class="row">
+    <button data-add="buoy"><span class="sw" style="background:var(--buoy)"></span>buoy</button>
+    <button data-add="pier"><span class="sw" style="background:var(--pier)"></span>pier</button>
+    <button data-add="moored_vessel"><span class="sw" style="background:var(--vessel)"></span>moored</button>
+    <button data-add="dock"><span class="sw" style="background:var(--dock)"></span>dock</button>
+  </div>
+  <div class="row">
+    <button data-add="waypoint">waypoint</button>
+    <button data-add="lane"><span class="sw" style="background:#4f8fd8"></span>lane</button>
+    <button data-add="traffic">traffic loop</button>
+    <button id="bStart">move start here</button>
+  </div>
+  <div class="hint">Click a button, then click the map. Click a thing to select it; the
+    <b>Delete</b> button below (or the Backspace / Delete key) removes it; <b>[</b> / <b>]</b> rotate it.
+    A <b>lane</b> is where the moving vessels run: it is added straight across the reach at the
+    clicked height; drag its points, insert points to bend it, set its schedule in the selection panel.</div>
+
+  <h2>Selection</h2>
+  <div id="props"><div class="hint">Nothing selected.</div></div>
+
+  <h2>Checks</h2>
+  <div id="problems"></div>
+  <div class="hint" style="margin-top:8px">Ordered connectivity (3-K9) is not checked
+    here — it needs the eroded free-space grid. Run
+    <code>usvnav validate course.json</code> for the full set.</div>
+</div>
+
+<script>
+"use strict";
+// --------------------------------------------------------------- constants (decisions)
+const PAL = {water:"#16303B", shallow:"#24444B", bank:"#77725C", wet:"#3E3B30",
+             dock:"#6B4F35", pier:"#7E7B73",
+             moored_vessel:"#53606B", moving_vessel:"#53606B", buoy:"#F0C820",
+             ego:"#F26E7A", outside:"#101210"};
+// Outline colours, so a grey barge against grey concrete has a boundary at all.
+const EDGE = {dock:"#2A1F14", pier:"#2E2C28", moored_vessel:"#1E252B",
+              moving_vessel:"#1E252B", buoy:"#3A3008"};
+const HULL_L = 3.0, HULL_W = 2.0;                       // 1-W4
+const HULL_R = Math.hypot(HULL_L, HULL_W) / 2;          // 1.80 m
+const REACH_X = 400, REACH_Y = 150;                     // 1-W2 (x widened, 1-W8)
+const LEG_MIN = 40, LEG_MAX = 160;                      // 3-K5
+const WP_MIN = 2, WP_MAX = 10;                          // 3-K5 (an out-and-back route carries its return's waypoints too)
+const SENSING = 50;                                     // 4-V5
+const SPEED_MIN = 0.5, SPEED_MAX = 2.5;                 // 2-E2
+// 2-E5, as (length along heading, width across)
+const SIZES = {pier:[[8,20],[4,10]], moored_vessel:[[10,40],[3,10]],
+               dock:[[10,30],[5,15]], moving_vessel:[[3,20],[1.2,6]]};
+const BUOY_D = 0.6;                                     // 2-E4
+const FORMAT = "usvnav-course/2";
+const READ_FORMATS = ["usvnav-course/2", "usvnav-course/1"];  // what a participant's files can carry; the Python loader also reads the frozen sets' older tag
+// Lanes (the moving vessels' paths; docs/OBSERVATION.md §9). The checks here are the ones that
+// need no free-space grid (L2, L9, L11, shape); the studio's save and `usvnav validate` run L1-L11.
+const LANE_TURN_MAX = 60;                               // L11
+const LANE_DEFAULT = {speed:1.5, headway:60, L:12, W:3};
+const LANE_COL = "#4f8fd8", LANE_SEL = "#a9d2ff";
+
+// --------------------------------------------------------------- state
+let course = blankCourse();
+let sel = null;               // {kind:"body"|"waypoint"|"start"|"vertex"|"route"|"lane", i, j}
+let pending = null;           // an "Add" button waiting for a map click
+let view = {x:150, y:75, s:2.6};   // world centre and pixels-per-metre
+let overlay = null;           // (ctx, toScreen, view, S) => void, set by the studio
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+
+function blankCourse() {
+  // A straight 60 m channel down the middle of the reach, with two waypoints. Enough to
+  // pass every check this editor can run, so a new file starts valid and you break it
+  // on purpose rather than by default.
+  const y0 = REACH_Y / 2, hw = 30;
+  const xs = [0, 100, 200, 300, 400];
+  const upper = xs.map(x => [x, y0 + hw]), lower = xs.map(x => [x, y0 - hw]).reverse();
+  return {
+    format: FORMAT,
+    world: {boundary: upper.concat(lower)},
+    start: {x: 80, y: y0, heading_rad: 0},
+    waypoints: [{x: 190, y: y0, arrival_radius_m: 5},
+                {x: 300, y: y0, arrival_radius_m: 3}],
+    bodies: [], traffic: [], lanes: []
+  };
+}
+
+// --------------------------------------------------------------- geometry helpers
+const deg = r => r * 180 / Math.PI, rad = d => d * Math.PI / 180;
+function wrap(a){ return Math.atan2(Math.sin(a), Math.cos(a)); }
+function rectCorners(b){
+  const c = Math.cos(b.heading_rad||0), s = Math.sin(b.heading_rad||0);
+  const hl = b.length_m/2, hw = b.width_m/2;
+  return [[ hl, hw],[ hl,-hw],[-hl,-hw],[-hl, hw]]
+    .map(([u,v]) => [b.x + u*c - v*s, b.y + u*s + v*c]);
+}
+function segDist(p, a, b){
+  const vx=b[0]-a[0], vy=b[1]-a[1], L2=vx*vx+vy*vy;
+  let t = L2 ? ((p[0]-a[0])*vx + (p[1]-a[1])*vy)/L2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p[0]-a[0]-t*vx, p[1]-a[1]-t*vy);
+}
+function inPoly(p, poly){
+  let inside = false;
+  for (let i=0, n=poly.length; i<n; i++){
+    const [x1,y1]=poly[i], [x2,y2]=poly[(i+1)%n];
+    if ((y1>p[1]) !== (y2>p[1])){
+      const xint = x1 + (p[1]-y1)*(x2-x1)/(y2-y1);
+      if (p[0] < xint) inside = !inside;
+    }
+  }
+  return inside;
+}
+function segsCross(p1,p2,q1,q2){
+  const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+  const d1=cr(q1,q2,p1), d2=cr(q1,q2,p2), d3=cr(p1,p2,q1), d4=cr(p1,p2,q2);
+  return ((d1>0)!==(d2>0)) && ((d3>0)!==(d4>0));
+}
+/** Distance from a point to a body's surface; 0 inside. Mirrors geometry.py. */
+function bodyDist(p, b){
+  if (b.primitive === "circle") return Math.max(0, Math.hypot(p[0]-b.x, p[1]-b.y) - b.diameter_m/2);
+  const c=Math.cos(b.heading_rad||0), s=Math.sin(b.heading_rad||0);
+  const dx=p[0]-b.x, dy=p[1]-b.y;
+  const u=dx*c+dy*s, v=-dx*s+dy*c;
+  const a=Math.abs(u)-b.length_m/2, e=Math.abs(v)-b.width_m/2;
+  if (a<=0 && e<=0) return 0;
+  return Math.hypot(Math.max(a,0), Math.max(e,0));
+}
+/** Pose at t = 0 on a traffic loop, for 2-E7's separation check. */
+function routePoseAtZero(r){
+  const p = r.route, n = p.length;
+  const cum = [0];
+  for (let i=0;i<n;i++) cum.push(cum[i] + Math.hypot(p[(i+1)%n][0]-p[i][0], p[(i+1)%n][1]-p[i][1]));
+  const per = cum[n];
+  let s = ((r.phase_m||0) % per + per) % per;
+  let i = 0; while (i < n-1 && cum[i+1] <= s) i++;
+  const seg = cum[i+1]-cum[i], f = seg ? (s-cum[i])/seg : 0;
+  const a=p[i], b=p[(i+1)%n];
+  return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f];
+}
+
+/** A chevron at world point `p` pointing along heading `ang` (radians, world frame). */
+function arrow(p, ang, colour){
+  const S = window.devicePixelRatio || 1, len = 7*S;
+  const [sx,sy] = toScreen(p[0],p[1]);
+  const dx = Math.cos(ang), dy = -Math.sin(ang), nx = -dy, ny = dx;   // screen y points down
+  ctx.strokeStyle = colour; ctx.lineWidth = 1.5*S; ctx.beginPath();
+  ctx.moveTo(sx - len*dx + 0.6*len*nx, sy - len*dy + 0.6*len*ny);
+  ctx.lineTo(sx, sy);
+  ctx.lineTo(sx - len*dx - 0.6*len*nx, sy - len*dy - 0.6*len*ny);
+  ctx.stroke();
+}
+
+// --------------------------------------------------------------- view transform
+function toScreen(x, y){
+  return [cv.width/2 + (x - view.x) * view.s, cv.height/2 - (y - view.y) * view.s];
+}
+function toWorld(px, py){
+  return [view.x + (px - cv.width/2) / view.s, view.y - (py - cv.height/2) / view.s];
+}
+
+// --------------------------------------------------------------- drawing
+function draw(){
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle = PAL.outside; ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.lineJoin = "round";
+  const S = dpr;  // everything below is in device pixels already via toScreen
+
+  // bank fills the reach box, water fills the navigable polygon
+  ctx.fillStyle = PAL.bank;
+  poly([[0,0],[REACH_X,0],[REACH_X,REACH_Y],[0,REACH_Y]]); ctx.fill();
+  // The shoreline reads as one because both sides of it change: wet ground outside the
+  // polygon, shallower water inside. Two strokes on the same path, clipped, is the whole
+  // trick -- and it is why the edge is legible without a white outline on it.
+  poly(course.world.boundary);
+  ctx.strokeStyle = PAL.wet; ctx.lineWidth = Math.max(2, 2.5*view.s*dpr); ctx.stroke();
+  ctx.fillStyle = PAL.water; ctx.fill();
+  ctx.save(); ctx.clip();
+  poly(course.world.boundary);
+  ctx.strokeStyle = PAL.shallow; ctx.lineWidth = Math.max(2, 7*view.s*dpr); ctx.stroke();
+  ctx.restore();
+
+  // traffic loops, under the bodies
+  (course.traffic||[]).forEach((r,i) => {
+    ctx.strokeStyle = sel && sel.kind==="route" && sel.i===i ? "#7fe3d8" : "#3f7a74";
+    ctx.lineWidth = 1.5*S; poly(r.route); ctx.closePath(); ctx.stroke();
+    r.route.forEach((p,j) => dot(p, 2.5*S, "#3f7a74"));
+    // The vessel at its t=0 pose, unless a playback overlay is drawing it where it really is.
+    if (!overlay){
+      const q = routePoseAtZero(r);
+      ctx.fillStyle = PAL.moving_vessel;
+      rect({x:q[0], y:q[1], length_m:r.length_m, width_m:r.width_m,
+            heading_rad: Math.atan2(r.route[1][1]-r.route[0][1], r.route[1][0]-r.route[0][0])});
+      ctx.fill();
+    }
+  });
+
+  // lanes: the moving vessels' paths, under the bodies -- the route with its direction, the
+  // widest vessel at the first point (a playback overlay draws the real ones where they are)
+  (course.lanes||[]).forEach((l,i) => {
+    const on = sel && sel.kind==="lane" && sel.i===i, col = on ? LANE_SEL : LANE_COL;
+    const n = l.route.length;
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5*S; poly(l.route); if (l.closed) ctx.closePath(); ctx.stroke();
+    for (let j=0;j<(l.closed ? n : n-1);j++){
+      const a=l.route[j], b=l.route[(j+1)%n];
+      arrow([(a[0]+b[0])/2, (a[1]+b[1])/2], Math.atan2(b[1]-a[1], b[0]-a[0]), col);
+    }
+    l.route.forEach((p,j) => dot(p, (on && sel.j===j ? 4.5 : 2.5)*S, on && sel.j===j ? "#fff" : col));
+    if (!overlay && n >= 2 && (l.vessels||[]).length){
+      const L = Math.max(...l.vessels.map(v=>v.length_m)), W = Math.max(...l.vessels.map(v=>v.width_m));
+      ctx.fillStyle = PAL.moving_vessel; ctx.globalAlpha = 0.6;
+      rect({x:l.route[0][0], y:l.route[0][1], length_m:L, width_m:W,
+            heading_rad: Math.atan2(l.route[1][1]-l.route[0][1], l.route[1][0]-l.route[0][0])});
+      ctx.fill(); ctx.globalAlpha = 1;
+    }
+  });
+
+  // static bodies
+  (course.bodies||[]).forEach((b,i) => {
+    ctx.fillStyle = PAL[b.class] || "#888";
+    ctx.strokeStyle = EDGE[b.class] || "#222";
+    ctx.lineWidth = Math.max(1, 1.2*S);
+    if (b.primitive === "circle"){
+      const [sx,sy] = toScreen(b.x,b.y);
+      ctx.beginPath();
+      // A 0.6 m buoy is under a pixel at most useful zooms, so it is drawn at a floor
+      // size and ringed -- an annotation, like the map view's (follow-up item 5 solves
+      // the same problem for the observation, where inflating the body is not allowed).
+      ctx.arc(sx, sy, Math.max(3*S, b.diameter_m/2*view.s*dpr), 0, 6.284);
+      ctx.fill(); ctx.stroke();
+    } else { rect(b); ctx.fill(); rect(b); ctx.stroke(); }
+    if (sel && sel.kind==="body" && sel.i===i){
+      ctx.strokeStyle="#fff"; ctx.lineWidth=1.5*S;
+      if (b.primitive==="circle"){ ctx.stroke(); } else { rect(b); ctx.stroke(); }
+    }
+  });
+
+  // waypoint chain
+  ctx.strokeStyle="#ffffff55"; ctx.lineWidth=1*S; ctx.setLineDash([4*S,4*S]);
+  ctx.beginPath();
+  let [sx,sy] = toScreen(course.start.x, course.start.y); ctx.moveTo(sx,sy);
+  course.waypoints.forEach(w => { const [x,y]=toScreen(w.x,w.y); ctx.lineTo(x,y); });
+  ctx.stroke(); ctx.setLineDash([]);
+  course.waypoints.forEach((w,i) => {
+    const [x,y]=toScreen(w.x,w.y);
+    ctx.strokeStyle = sel&&sel.kind==="waypoint"&&sel.i===i ? "#fff" : "#ffffff90";
+    ctx.lineWidth=1.5*S; ctx.beginPath();
+    ctx.arc(x,y, w.arrival_radius_m*view.s*dpr, 0, 6.284); ctx.stroke();
+    dot([w.x,w.y], 3*S, "#fff");
+  });
+
+  // start pose: the hull at its real size, plus a bow tick
+  ctx.fillStyle = PAL.ego;
+  rect({x:course.start.x, y:course.start.y, length_m:HULL_L, width_m:HULL_W,
+        heading_rad:course.start.heading_rad}); ctx.fill();
+  if (sel && sel.kind==="start"){ ctx.strokeStyle="#fff"; ctx.lineWidth=1.5*S; ctx.stroke(); }
+  const bx = course.start.x + Math.cos(course.start.heading_rad)*8;
+  const by = course.start.y + Math.sin(course.start.heading_rad)*8;
+  ctx.strokeStyle="#60ff60"; ctx.lineWidth=1.5*S; ctx.beginPath();
+  const a=toScreen(course.start.x,course.start.y), b2=toScreen(bx,by);
+  ctx.moveTo(a[0],a[1]); ctx.lineTo(b2[0],b2[1]); ctx.stroke();
+
+  // boundary vertices last, so they are grabbable
+  course.world.boundary.forEach((p,i) =>
+    dot(p, (sel&&sel.kind==="vertex"&&sel.i===i ? 5 : 3)*S,
+        sel&&sel.kind==="vertex"&&sel.i===i ? "#fff" : "#ffffff70"));
+
+  // The studio's playback layer (T1-RES-21): a run drawn on the map it was made on, in
+  // the same view, so the hull and the traffic are seen against the shapes an author is
+  // dragging. The editor knows nothing about runs; it lends its canvas and its transform.
+  if (overlay){ try { overlay(ctx, toScreen, view, S); } catch (e) { console.error(e); } }
+
+  function poly(pts){
+    ctx.beginPath();
+    pts.forEach((p,i) => { const [x,y]=toScreen(p[0],p[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    ctx.closePath();
+  }
+  function rect(b){
+    ctx.beginPath();
+    rectCorners(b).forEach((p,i) => { const [x,y]=toScreen(p[0],p[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    ctx.closePath();
+  }
+  function dot(p, r, col){
+    const [x,y]=toScreen(p[0],p[1]);
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(x,y,r,0,6.284); ctx.fill();
+  }
+}
+
+// --------------------------------------------------------------- checks
+function checks(){
+  const out = [];
+  const add = (sev, rule, msg) => out.push({sev, rule, msg});
+  const B = course.world.boundary;
+
+  // 2-E6: a simple polygon, or inside/outside is undefined
+  for (let i=0;i<B.length;i++)
+    for (let k=i+2;k<B.length;k++){
+      if (i===0 && k===B.length-1) continue;
+      if (segsCross(B[i],B[(i+1)%B.length],B[k],B[(k+1)%B.length])){
+        add("error","2-E6","the shoreline crosses itself between vertices "+i+" and "+k);
+        i = B.length; break;
+      }
+    }
+  // 1-W2
+  const xs=B.map(p=>p[0]), ys=B.map(p=>p[1]);
+  if (Math.min(...xs)<0 || Math.min(...ys)<0 || Math.max(...xs)>REACH_X || Math.max(...ys)>REACH_Y)
+    add("warning","1-W2","the navigable area leaves x [0,"+REACH_X+"], y [0,"+REACH_Y+"]");
+
+  // 3-K5
+  const n = course.waypoints.length;
+  if (n<WP_MIN || n>WP_MAX) add("error","3-K5", n+" waypoints; "+WP_MIN+" to "+WP_MAX+" are allowed");
+  const chain = [[course.start.x,course.start.y]].concat(course.waypoints.map(w=>[w.x,w.y]));
+  for (let i=0;i<chain.length-1;i++){
+    const d = Math.hypot(chain[i+1][0]-chain[i][0], chain[i+1][1]-chain[i][1]);
+    if (d<LEG_MIN-1e-6 || d>LEG_MAX+1e-6)
+      add("error","3-K5","leg "+i+" is "+d.toFixed(0)+" m; "+LEG_MIN+"-"+LEG_MAX+" m is allowed");
+  }
+  // 3-K11
+  course.waypoints.forEach((w,i) => {
+    const want = i===n-1 ? 3 : 5;
+    if (Math.abs(w.arrival_radius_m-want)>1e-6)
+      add("warning","3-K11","waypoint "+i+" has radius "+w.arrival_radius_m+" m; "+want+" m is the convention");
+  });
+
+  // 3-K14: the start pose, tested against the real hull
+  const hull = {primitive:"rect", x:course.start.x, y:course.start.y,
+                length_m:HULL_L, width_m:HULL_W, heading_rad:course.start.heading_rad};
+  if (!rectCorners(hull).every(p => inPoly(p, B)))
+    add("error","3-K14","the start pose is not fully inside the navigable boundary");
+  (course.bodies||[]).forEach((b,i) => {
+    if (rectCorners(hull).some(p => bodyDist(p,b)<=0) || bodyDist([hull.x,hull.y],b)<=0)
+      add("error","3-K14","the start pose touches bodies["+i+"] ("+b.class+")");
+  });
+
+  // 2-E11: nothing inside the route's fixed points
+  const discs = [[[course.start.x,course.start.y], HULL_R, "the start pose"]].concat(
+    course.waypoints.map((w,i) => [[w.x,w.y], w.arrival_radius_m+HULL_R, "waypoint "+i+"'s arrival disc"]));
+  (course.bodies||[]).forEach((b,i) => {
+    for (const [p, r, what] of discs)
+      if (bodyDist(p,b) < r){
+        add("error","2-E11","bodies["+i+"] ("+b.class+") enters "+what);
+        break;
+      }
+  });
+
+  // 2-E5
+  (course.bodies||[]).forEach((b,i) => {
+    if (b.class === "buoy"){
+      if (Math.abs(b.diameter_m-BUOY_D)>1e-6)
+        add("warning","2-E5","bodies["+i+"] is "+b.diameter_m+" m across; a buoy is "+BUOY_D+" m");
+      return;
+    }
+    const r = SIZES[b.class]; if (!r) return;
+    if (b.length_m<r[0][0]-1e-6 || b.length_m>r[0][1]+1e-6)
+      add("warning","2-E5","bodies["+i+"] ("+b.class+") is "+b.length_m.toFixed(1)+" m long; "+r[0][0]+"-"+r[0][1]+" m");
+    if (b.width_m<r[1][0]-1e-6 || b.width_m>r[1][1]+1e-6)
+      add("warning","2-E5","bodies["+i+"] ("+b.class+") is "+b.width_m.toFixed(1)+" m wide; "+r[1][0]+"-"+r[1][1]+" m");
+  });
+
+  // 2-E2 / 2-E7
+  (course.traffic||[]).forEach((r,i) => {
+    if (r.speed_mps<SPEED_MIN-1e-9 || r.speed_mps>SPEED_MAX+1e-9)
+      add("error","2-E2","traffic["+i+"] moves at "+r.speed_mps+" m/s; "+SPEED_MIN+"-"+SPEED_MAX+" is allowed");
+    const q = routePoseAtZero(r);
+    const d = Math.hypot(q[0]-course.start.x, q[1]-course.start.y);
+    if (d < SENSING)
+      add("error","2-E7","traffic["+i+"] starts "+d.toFixed(0)+" m from the start pose; one sensing range ("+SENSING+" m) is the minimum");
+    (course.bodies||[]).forEach((b,j) => {
+      if (r.route.some(p => bodyDist(p,b)<=0))
+        add("error","2-E7","traffic["+i+"]'s route runs through bodies["+j+"] ("+b.class+")");
+    });
+  });
+  // lanes: shape, L2 speeds, L9 sizes, L11 turns (the rest needs the free-space grid: save / validate)
+  (course.lanes||[]).forEach((l,i) => {
+    const pts = l.route||[], n = pts.length, need = l.closed ? 3 : 2;
+    if (n < need) add("error","L1","lanes["+i+"] needs at least "+need+" route points");
+    if ((l.speeds_mps||[]).length !== n) add("error","L2","lanes["+i+"] needs one speed per route point");
+    (l.speeds_mps||[]).forEach((v,j) => {
+      if (v<SPEED_MIN-1e-9 || v>SPEED_MAX+1e-9)
+        add("error","L2","lanes["+i+"].speeds_mps["+j+"] is "+v+" m/s; "+SPEED_MIN+"-"+SPEED_MAX+" is allowed (2-E2)");
+    });
+    if (!l.closed && !(l.headway_s > 0)) add("error","L3","lanes["+i+"] is open and needs a positive headway_s");
+    if (!(l.vessels||[]).length) add("error","L9","lanes["+i+"] needs at least one vessel size");
+    (l.vessels||[]).forEach((v,j) => {
+      const r = SIZES.moving_vessel;
+      if (v.length_m<r[0][0]-1e-6 || v.length_m>r[0][1]+1e-6 || v.width_m<r[1][0]-1e-6 || v.width_m>r[1][1]+1e-6)
+        add("error","L9","lanes["+i+"].vessels["+j+"] is "+v.length_m+" \u00d7 "+v.width_m+" m; 2-E5 allows "+r[0][0]+"-"+r[0][1]+" by "+r[1][0]+"-"+r[1][1]+" m");
+    });
+    const turns = l.closed ? n : Math.max(0, n-2);
+    for (let k=0;k<turns;k++){
+      const j = l.closed ? k : k+1;
+      const a=pts[(j-1+n)%n], b=pts[j%n], c=pts[(j+1)%n];
+      const t = Math.abs(deg(wrap(Math.atan2(c[1]-b[1],c[0]-b[0]) - Math.atan2(b[1]-a[1],b[0]-a[0]))));
+      if (t > LANE_TURN_MAX+1e-9)
+        add("error","L11","lanes["+i+"] turns "+t.toFixed(0)+"\u00b0 at route["+(j%n)+"]; L11 allows "+LANE_TURN_MAX+"\u00b0 -- insert a point to round the corner");
+    }
+  });
+  return out;
+}
+
+function renderProblems(){
+  const box = document.getElementById("problems");
+  const ps = checks();
+  box.innerHTML = ps.length ? "" : "<div class='hint'>Nothing this editor can check is wrong.</div>";
+  ps.forEach(p => {
+    const d = document.createElement("div");
+    d.className = p.sev;
+    d.innerHTML = "<code>"+p.rule+"</code> " + p.msg;
+    box.appendChild(d);
+  });
+}
+
+// --------------------------------------------------------------- properties panel
+function renderProps(){
+  const box = document.getElementById("props");
+  box.innerHTML = "";
+  if (!sel){ box.innerHTML = "<div class='hint'>Nothing selected. Click a body, a waypoint, the hull, or a shoreline vertex.</div>"; return; }
+  const field = (label, value, step, set) => {
+    const row = document.createElement("div"); row.className="row";
+    const l = document.createElement("label"); l.textContent = label;
+    const inp = document.createElement("input");
+    inp.type="number"; inp.step=step; inp.value = Math.round(value*1000)/1000;
+    inp.oninput = () => { set(parseFloat(inp.value)); draw(); renderProblems(); };
+    row.append(l, inp); box.appendChild(row);
+  };
+  if (sel.kind === "body"){
+    const b = course.bodies[sel.i];
+    const row = document.createElement("div"); row.className="row";
+    row.innerHTML = "<label>class</label>";
+    const s = document.createElement("select");
+    ["buoy","pier","moored_vessel","dock"].forEach(c => {
+      const o=document.createElement("option"); o.value=o.textContent=c;
+      o.selected = c===b.class; s.appendChild(o);
+    });
+    s.onchange = () => { course.bodies[sel.i] = newBody(s.value, b.x, b.y); draw(); renderProps(); renderProblems(); };
+    row.appendChild(s); box.appendChild(row);
+    field("x (m)", b.x, 0.5, v => b.x=v);
+    field("y (m)", b.y, 0.5, v => b.y=v);
+    if (b.primitive === "circle") field("diameter (m)", b.diameter_m, 0.1, v => b.diameter_m=v);
+    else {
+      field("length (m)", b.length_m, 0.5, v => b.length_m=v);
+      field("width (m)", b.width_m, 0.5, v => b.width_m=v);
+      field("heading (deg)", deg(b.heading_rad||0), 1, v => b.heading_rad=wrap(rad(v)));
+    }
+  } else if (sel.kind === "waypoint"){
+    const w = course.waypoints[sel.i];
+    field("x (m)", w.x, 0.5, v => w.x=v);
+    field("y (m)", w.y, 0.5, v => w.y=v);
+    field("arrival r (m)", w.arrival_radius_m, 0.5, v => w.arrival_radius_m=v);
+  } else if (sel.kind === "start"){
+    field("x (m)", course.start.x, 0.5, v => course.start.x=v);
+    field("y (m)", course.start.y, 0.5, v => course.start.y=v);
+    field("heading (deg)", deg(course.start.heading_rad), 1, v => course.start.heading_rad=wrap(rad(v)));
+  } else if (sel.kind === "vertex"){
+    const p = course.world.boundary[sel.i];
+    field("x (m)", p[0], 0.5, v => p[0]=v);
+    field("y (m)", p[1], 0.5, v => p[1]=v);
+  } else if (sel.kind === "route"){
+    const r = course.traffic[sel.i];
+    field("length (m)", r.length_m, 0.5, v => r.length_m=v);
+    field("width (m)", r.width_m, 0.5, v => r.width_m=v);
+    field("speed (m/s)", r.speed_mps, 0.1, v => r.speed_mps=v);
+    field("phase (m)", r.phase_m||0, 1, v => r.phase_m=v);
+    box.insertAdjacentHTML("beforeend",
+      "<div class='hint'>Drag the loop's vertices to reshape it. Phase is arc length "+
+      "along the loop at t = 0 (2-E7).</div>");
+  } else if (sel.kind === "lane"){
+    const l = course.lanes[sel.i], p = l.route[sel.j], n = l.route.length;
+    l.vessels = (l.vessels && l.vessels.length) ? l.vessels : [{length_m:LANE_DEFAULT.L, width_m:LANE_DEFAULT.W}];
+    const v0 = l.vessels[0];
+    field("point x (m)", p[0], 0.5, v => p[0]=v);
+    field("point y (m)", p[1], 0.5, v => p[1]=v);
+    field("speed here (m/s)", l.speeds_mps[sel.j], 0.1, v => l.speeds_mps[sel.j]=v);
+    if (!l.closed) field("headway (s)", l.headway_s, 1, v => l.headway_s=v);
+    field("offset (s)", l.offset_s||0, 1, v => l.offset_s=v);
+    field("vessel length (m)", v0.length_m, 0.5, v => v0.length_m=v);
+    field("vessel width (m)", v0.width_m, 0.5, v => v0.width_m=v);
+    const row = document.createElement("div"); row.className = "row";
+    const lab = document.createElement("label"); lab.textContent = "closed";
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!l.closed;
+    cb.onchange = () => { l.closed = cb.checked; if (l.closed) delete l.headway_s;
+                          else if (!(l.headway_s > 0)) l.headway_s = LANE_DEFAULT.headway; refresh(); };
+    row.appendChild(lab); row.appendChild(cb); box.appendChild(row);
+    const row2 = document.createElement("div"); row2.className = "row";
+    const ins = document.createElement("button"); ins.textContent = "insert point after";
+    ins.title = "a new route point halfway to the next one (before, at an open lane's last point)";
+    ins.onclick = () => {
+      const k = (!l.closed && sel.j === n-1) ? sel.j-1 : sel.j, q = l.route[(k+1)%n];
+      l.route.splice(k+1, 0, [(l.route[k][0]+q[0])/2, (l.route[k][1]+q[1])/2]);
+      l.speeds_mps.splice(k+1, 0, l.speeds_mps[k]);
+      sel = {kind:"lane", i:sel.i, j:k+1}; refresh();
+    };
+    const rev = document.createElement("button"); rev.textContent = "reverse direction";
+    rev.onclick = () => { l.route.reverse(); l.speeds_mps.reverse(); sel = {kind:"lane", i:sel.i, j:n-1-sel.j}; refresh(); };
+    row2.appendChild(ins); row2.appendChild(rev); box.appendChild(row2);
+    box.insertAdjacentHTML("beforeend",
+      "<div class='hint'>Vessels enter at the first point every <i>headway</i> seconds (shifted by "+
+      "<i>offset</i>), run the lane at the speed set at each point and leave at the last; a closed lane "+
+      "circulates. Start and end an open lane on an end cap or a berth cut into the bank. More vessel "+
+      "sizes: edit the file (docs/OBSERVATION.md \u00a79). Delete removes this point, or the lane when "+
+      "it has only the minimum.</div>");
+  }
+  // The one action every selection has: remove it. A button, because the key is easy to
+  // miss; the reason it is greyed out, because "nothing happens" is the worst answer.
+  const why = cannotDelete();
+  const row = document.createElement("div"); row.className = "row";
+  const del = document.createElement("button"); del.id = "bDelete"; del.textContent = "Delete";
+  del.disabled = !!why; del.title = why || "remove the selection (Backspace / Delete)";
+  del.onclick = () => deleteSelection();
+  row.appendChild(del);
+  if (why){ const h = document.createElement("span"); h.className = "hint"; h.textContent = why; row.appendChild(h); }
+  box.appendChild(row);
+}
+
+function newBody(cls, x, y){
+  if (cls === "buoy") return {class:"buoy", primitive:"circle", x, y, diameter_m:BUOY_D};
+  const r = SIZES[cls];
+  return {class:cls, primitive:"rect", x, y,
+          length_m:(r[0][0]+r[0][1])/2, width_m:(r[1][0]+r[1][1])/2, heading_rad:0};
+}
+
+// --------------------------------------------------------------- picking and dragging
+function pick(wx, wy){
+  const tol = 8 / view.s;
+  for (let i=course.world.boundary.length-1;i>=0;i--){
+    const p = course.world.boundary[i];
+    if (Math.hypot(p[0]-wx, p[1]-wy) < tol) return {kind:"vertex", i};
+  }
+  for (let i=course.waypoints.length-1;i>=0;i--){
+    const w = course.waypoints[i];
+    if (Math.hypot(w.x-wx, w.y-wy) < tol) return {kind:"waypoint", i};
+  }
+  if (Math.hypot(course.start.x-wx, course.start.y-wy) < Math.max(tol, HULL_R))
+    return {kind:"start"};
+  for (let i=(course.bodies||[]).length-1;i>=0;i--)
+    if (bodyDist([wx,wy], course.bodies[i]) < tol/2) return {kind:"body", i};
+  for (let i=(course.traffic||[]).length-1;i>=0;i--){
+    const r = course.traffic[i];
+    for (let j=0;j<r.route.length;j++)
+      if (Math.hypot(r.route[j][0]-wx, r.route[j][1]-wy) < tol) return {kind:"route", i, j};
+  }
+  for (let i=(course.lanes||[]).length-1;i>=0;i--){
+    const l = course.lanes[i];
+    for (let j=0;j<l.route.length;j++)
+      if (Math.hypot(l.route[j][0]-wx, l.route[j][1]-wy) < tol) return {kind:"lane", i, j};
+  }
+  return null;
+}
+
+let drag = null;
+cv.addEventListener("mousedown", ev => {
+  const [wx,wy] = toWorld(ev.offsetX * (window.devicePixelRatio||1),
+                          ev.offsetY * (window.devicePixelRatio||1));
+  if (pending){ place(pending, wx, wy); pending = null; syncButtons(); return; }
+  const hit = pick(wx,wy);
+  sel = hit; renderProps(); draw();
+  drag = hit ? {hit, wx, wy} : {pan:true, px:ev.offsetX, py:ev.offsetY, vx:view.x, vy:view.y};
+});
+window.addEventListener("mousemove", ev => {
+  const dpr = window.devicePixelRatio||1;
+  if (!drag){
+    const [wx,wy] = toWorld(ev.offsetX*dpr, ev.offsetY*dpr);
+    if (ev.target === cv) document.getElementById("hud").textContent =
+      "x "+wx.toFixed(1)+"  y "+wy.toFixed(1)+" m";
+    return;
+  }
+  if (drag.pan){
+    view.x = drag.vx - (ev.offsetX - drag.px)/view.s;
+    view.y = drag.vy + (ev.offsetY - drag.py)/view.s;
+    draw(); return;
+  }
+  const [wx,wy] = toWorld(ev.offsetX*dpr, ev.offsetY*dpr);
+  const dx = wx - drag.wx, dy = wy - drag.wy;
+  const h = drag.hit;
+  if (h.kind==="body"){ course.bodies[h.i].x += dx; course.bodies[h.i].y += dy; }
+  else if (h.kind==="waypoint"){ course.waypoints[h.i].x += dx; course.waypoints[h.i].y += dy; }
+  else if (h.kind==="start"){ course.start.x += dx; course.start.y += dy; }
+  else if (h.kind==="vertex"){ const p=course.world.boundary[h.i]; p[0]+=dx; p[1]+=dy; }
+  else if (h.kind==="route"){ const p=course.traffic[h.i].route[h.j]; p[0]+=dx; p[1]+=dy; }
+  else if (h.kind==="lane"){ const p=course.lanes[h.i].route[h.j]; p[0]+=dx; p[1]+=dy; }
+  drag.wx = wx; drag.wy = wy;
+  draw(); renderProps(); renderProblems();
+});
+window.addEventListener("mouseup", () => { drag = null; });
+cv.addEventListener("wheel", ev => {
+  ev.preventDefault();
+  const dpr = window.devicePixelRatio||1;
+  const before = toWorld(ev.offsetX*dpr, ev.offsetY*dpr);
+  view.s *= Math.exp(-ev.deltaY * 0.0015);
+  view.s = Math.max(0.4, Math.min(40, view.s));
+  const after = toWorld(ev.offsetX*dpr, ev.offsetY*dpr);
+  view.x += before[0]-after[0]; view.y += before[1]-after[1];
+  draw();
+}, {passive:false});
+
+/** Why the selection cannot be removed, or "" when it can. The start always exists, a
+ *  route needs at least one waypoint (2-E1), a boundary at least three vertices. */
+function cannotDelete(){
+  if (!sel) return "nothing selected";
+  if (sel.kind==="start") return "the start cannot be removed; drag it or use \u201cmove start here\u201d";
+  if (sel.kind==="waypoint" && course.waypoints.length<=1) return "a course needs at least one waypoint";
+  if (sel.kind==="vertex" && course.world.boundary.length<=3) return "a boundary needs at least three vertices";
+  return "";
+}
+
+/** Remove the selected body, waypoint, traffic loop, lane point (or lane) or shoreline vertex. Returns whether
+ *  anything was removed. The Delete button and the Backspace / Delete key both come here. */
+function deleteSelection(){
+  if (cannotDelete()) return false;
+  if (sel.kind==="body") course.bodies.splice(sel.i,1);
+  else if (sel.kind==="waypoint") course.waypoints.splice(sel.i,1);
+  else if (sel.kind==="route") course.traffic.splice(sel.i,1);
+  else if (sel.kind==="lane"){
+    const l = course.lanes[sel.i];
+    if (l.route.length > (l.closed ? 3 : 2)){ l.route.splice(sel.j,1); l.speeds_mps.splice(sel.j,1); }
+    else course.lanes.splice(sel.i,1);
+  }
+  else if (sel.kind==="vertex") course.world.boundary.splice(sel.i,1);
+  sel=null; draw(); renderProps(); renderProblems();
+  return true;
+}
+
+window.addEventListener("keydown", ev => {
+  if (ev.target.tagName === "INPUT") return;
+  if ((ev.key==="Backspace"||ev.key==="Delete") && sel){
+    ev.preventDefault();                 // never let Backspace navigate the page away
+    deleteSelection();
+  }
+  if (sel && (ev.key==="["||ev.key==="]")){
+    const d = rad(ev.key==="[" ? -5 : 5);
+    if (sel.kind==="body" && course.bodies[sel.i].primitive==="rect")
+      course.bodies[sel.i].heading_rad = wrap((course.bodies[sel.i].heading_rad||0)+d);
+    else if (sel.kind==="start") course.start.heading_rad = wrap(course.start.heading_rad+d);
+    draw(); renderProps(); renderProblems();
+  }
+});
+
+function place(what, x, y){
+  if (what === "waypoint"){
+    course.waypoints.forEach(w => w.arrival_radius_m = 5);
+    course.waypoints.push({x, y, arrival_radius_m: 3});   // 3-K11: the goal is 3 m
+    sel = {kind:"waypoint", i: course.waypoints.length-1};
+  } else if (what === "traffic"){
+    // A small racetrack around the click, filleted enough to be legal-ish; 2-E7 wants
+    // corners rounded to twice the vessel's length, which `usvnav validate` checks.
+    const L = 12, W = 4, a = 30, b = 12, k = 8, pts = [];
+    for (let i=0;i<k;i++){
+      const t = i/k*2*Math.PI;
+      pts.push([x + a*Math.cos(t), y + b*Math.sin(t)]);
+    }
+    course.traffic.push({class:"moving_vessel", length_m:L, width_m:W,
+                         speed_mps:1.5, phase_m:0, route:pts});
+    sel = {kind:"route", i: course.traffic.length-1, j:0};
+  } else if (what === "lane"){
+    // A straight open lane down the reach at the clicked height, from the water's edge at one
+    // end of the box to the other (the end caps are spawn walls). Drag its ends onto berths,
+    // insert points to bend it (L11 allows 60 degrees a point), set the schedule in the panel.
+    const xs = course.world.boundary.map(p => p[0]);
+    course.lanes = course.lanes || [];
+    course.lanes.push({class:"moving_vessel", closed:false,
+                       route:[[Math.min(...xs), y], [Math.max(...xs), y]],
+                       speeds_mps:[LANE_DEFAULT.speed, LANE_DEFAULT.speed],
+                       headway_s:LANE_DEFAULT.headway, offset_s:0,
+                       vessels:[{length_m:LANE_DEFAULT.L, width_m:LANE_DEFAULT.W}]});
+    sel = {kind:"lane", i: course.lanes.length-1, j:0};
+  } else if (what === "start"){
+    course.start.x = x; course.start.y = y; sel = {kind:"start"};
+  } else {
+    course.bodies.push(newBody(what, x, y));
+    sel = {kind:"body", i: course.bodies.length-1};
+  }
+  draw(); renderProps(); renderProblems();
+}
+
+// --------------------------------------------------------------- toolbar
+function syncButtons(){
+  document.querySelectorAll("[data-add]").forEach(b =>
+    b.classList.toggle("on", pending === b.dataset.add));
+  document.getElementById("bStart").classList.toggle("on", pending === "start");
+}
+document.querySelectorAll("[data-add]").forEach(b => b.onclick = () => {
+  pending = pending === b.dataset.add ? null : b.dataset.add; syncButtons();
+});
+document.getElementById("bStart").onclick = () => {
+  pending = pending === "start" ? null : "start"; syncButtons();
+};
+document.getElementById("bNew").onclick = () => {
+  course = blankCourse(); sel=null; draw(); renderProps(); renderProblems();
+};
+document.getElementById("bOpen").onclick = () => document.getElementById("file").click();
+document.getElementById("file").onchange = ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (!READ_FORMATS.includes(d.format)) throw new Error(`format is ${d.format}, expected one of ${READ_FORMATS.join(", ")}`);
+      course = d;
+      course.bodies = course.bodies || []; course.traffic = course.traffic || [];
+      course.lanes = course.lanes || [];
+      sel=null; frame(); refresh();
+    } catch (e) { alert("could not open: " + e.message); }
+  };
+  r.readAsText(f);
+};
+/** Centre and zoom the view on the navigable boundary. */
+function frame(){
+  const B = course.world.boundary;
+  const xs=B.map(p=>p[0]), ys=B.map(p=>p[1]);
+  view.x = (Math.min(...xs)+Math.max(...xs))/2;
+  view.y = (Math.min(...ys)+Math.max(...ys))/2;
+  view.s = Math.min(cv.clientWidth/(Math.max(...xs)-Math.min(...xs)+40),
+                    cv.clientHeight/(Math.max(...ys)-Math.min(...ys)+40));
+}
+
+/**
+ * What Save writes. Built explicitly, field by field, rather than by serialising the
+ * editing state: follow-up item 6 forbids a course file from carrying a difficulty
+ * label, a seed or any generator parameter, and an editor is the easiest place for one
+ * to leak in -- a stray `_selected` or `_undo` would ride along unnoticed.
+ */
+function saveObject(){
+  return {
+    format: FORMAT,
+    world: course.world.terrain_extent
+      ? {boundary: course.world.boundary, terrain_extent: course.world.terrain_extent}
+      : {boundary: course.world.boundary},
+    start: course.start,
+    waypoints: course.waypoints,
+    bodies: course.bodies,
+    traffic: course.traffic,
+    lanes: course.lanes || []
+  };
+}
+
+document.getElementById("bSave").onclick = () => {
+  const blob = new Blob([JSON.stringify(saveObject(), null, 1)+"\n"], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "course.json"; a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+// --------------------------------------------------------------- automation handle
+/**
+ * A small, documented handle on the editor's state.
+ *
+ * Two reasons it exists rather than the internals staying private. An organizer with
+ * thirty courses to touch up should be able to script the same edits the mouse makes
+ * -- from the browser console, or from a headless browser -- instead of hand-dragging
+ * thirty times. And it is what makes the editor *testable*: `tests/test_coursefile.py`
+ * drives it to place a body inside an arrival disc and checks that the sidebar reports
+ * 2-E11, so the editor's checks cannot silently drift from `coursefile.validate`.
+ *
+ * `toJSON()` returns exactly what Save writes, so a round trip through Python can be
+ * asserted rather than assumed.
+ */
+window.usvnavEditor = {
+  get course(){ return course; },
+  set course(c){ course = c; sel = null; refresh(); },
+  get view(){ return view; },
+  get selection(){ return sel; },
+  select(s){ sel = s; refresh(); },
+  place(what, x, y){ place(what, x, y); },
+  deleteSelection,
+  cannotDelete,
+  checks,
+  refresh,
+  draw,
+  frame,
+  blank: blankCourse,
+  // The studio sets this to draw a run on top of the course (see `draw`). `draw()` alone
+  // repaints without re-rendering the sidebar, which is what an animation wants.
+  get overlay(){ return overlay; },
+  set overlay(fn){ overlay = fn; draw(); },
+  toJSON: () => saveObject(),
+  problemsText: () => document.getElementById("problems").innerText,
+  canvasPNG: () => document.getElementById("c").toDataURL("image/png"),
+};
+
+function refresh(){ draw(); renderProps(); renderProblems(); }
+
+// Inside the studio (`usvnav studio`) the page is an iframe and the studio owns the files:
+// its own list opens and saves them through the server, so this row would download a copy
+// to the browser's folder instead -- confusing, and hidden.
+if (new URLSearchParams(location.search).has("embedded")){
+  document.getElementById("bNew").parentElement.style.display = "none";
+  document.querySelector("#side h1").textContent = "course";
+}
+
+window.addEventListener("resize", draw);
+refresh();
+</script>

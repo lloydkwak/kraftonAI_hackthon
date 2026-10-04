@@ -1,0 +1,42 @@
+{
+ "t": 120,
+ "pose": [
+  84.84619903564453,
+  74.01190185546875,
+  0.19529999792575836
+ ],
+ "vel": [
+  0.8999999761581421,
+  -0.0,
+  0.0
+ ],
+ "wp_index": 0,
+ "wp_polar": [
+  121.81279754638672,
+  0.0
+ ],
+ "prev_action": [
+  0.8999999761581421,
+  0.0
+ ],
+ "perception": {
+  "file": "observation-1-2.png",
+  "shape": [
+   200,
+   200,
+   3
+  ],
+  "dtype": "uint8",
+  "exact_colour_pixels": {
+   "unobserved": 0,
+   "water": 26202,
+   "dock": 0,
+   "pier": 378,
+   "bank": 5460,
+   "vessel": 198,
+   "ego": 24,
+   "buoy": 10
+  },
+  "boundary_pixels": 7728
+ }
+}

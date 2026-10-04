@@ -1,0 +1,5 @@
+{
+ "cruise_fraction": 0.8,
+ "steer_gain": 1.4,
+ "caution_range_m": 12.0
+}

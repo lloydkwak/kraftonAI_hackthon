@@ -1,0 +1,6 @@
+{
+ "format": "usvnav-submission/1",
+ "entry": "agent:Agent",
+ "config": "config.json",
+ "runtime": "usvnav-runtime/1"
+}

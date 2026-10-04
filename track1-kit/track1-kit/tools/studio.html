@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>usvnav studio</title>
+<!--
+  The studio: the participant's one test surface.
+
+  Served by `usvnav studio` (usvnav/studio.py) at http://127.0.0.1:8765/. The course
+  editor is embedded unchanged (editor.html?embedded=1) and lends this page its canvas and
+  its map transform through `window.usvnavEditor`: a run is drawn *on the course it was
+  made on*, in whatever view the author has panned to, so the hull and the traffic are seen
+  against the shapes being dragged. Everything else here is what an editor alone cannot do:
+  a file list that saves, a play button that runs the chosen agent through `sim.run_episode`
+  in a child process, playback with a time slider, the result and its cause, the clearance
+  over time, and "what did the agent see at this tick", rendered by the same perception
+  functions the run used.
+
+  Left: courses, agents, run. Middle: the editor and the transport bar. Right: the result.
+  Space plays and pauses; the arrow keys step a tick (shift: ten); Home/End jump.
+-->
+<style>
+  :root {
+    --water:#16303B; --bank:#77725C; --dock:#6B4F35; --pier:#7E7B73;
+    --vessel:#53606B; --ego:#F26E7A; --buoy:#F0C820; --outside:#101210;
+    --ink:#e8e8e8; --dim:#8b929c; --panel:#1d1f23; --line:#33373d; --warn:#ffcc44; --err:#ff6b6b;
+    --ok:#3fae6a; --fault:#c07ae8; --accent:#3d6ea8;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; height:100vh; display:grid; grid-template-columns:280px minmax(0,1fr);
+         grid-template-rows:minmax(0,1fr) auto auto; font:13px/1.5 ui-sans-serif,system-ui,sans-serif;
+         background:#141619; color:var(--ink); }
+  #left  { grid-column:1; grid-row:1/4; border-right:1px solid var(--line);
+           background:var(--panel); overflow-y:auto; padding:10px 12px 40px; }
+  #stage { grid-column:2; grid-row:1; position:relative; min-width:0; }
+  iframe { display:block; width:100%; height:100%; border:0; }
+  #transport { grid-column:2; grid-row:2; background:var(--panel); border-top:1px solid var(--line);
+               padding:6px 10px; display:flex; gap:10px; align-items:center; }
+  #transport input[type=range] { flex:1; }
+  /* The result drawer: under the map, so the map keeps the width. Three columns -- the
+     result and its cause, the clearance over time (wide, because it is a time axis) with
+     the agent's output under it, and what the agent saw. */
+  #drawer { grid-column:2; grid-row:3; height:290px; background:var(--panel); border-top:1px solid var(--line);
+            display:grid; grid-template-columns:minmax(300px,1fr) minmax(0,1.4fr) minmax(340px,400px); gap:0; min-width:0; }
+  #drawer.hidden { display:none; }
+  #drawer > div { padding:6px 12px 8px; overflow-y:auto; min-width:0; border-left:1px solid var(--line); }
+  #drawer > div:first-child { border-left:0; }
+  #drawer h2 { margin:0 0 4px; border-top:0; padding-top:2px; }
+  h1 { font-size:13px; margin:0 0 4px; font-weight:600; letter-spacing:.02em; }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim);
+       margin:14px 0 6px; border-top:1px solid var(--line); padding-top:10px; }
+  button, select, input { font:inherit; color:var(--ink); background:#282c32;
+       border:1px solid var(--line); border-radius:4px; padding:3px 7px; }
+  button { cursor:pointer; } button:hover { background:#343941; }
+  button:disabled { opacity:.45; cursor:default; }
+  button.primary { background:var(--accent); border-color:#4d84c4; font-weight:600; }
+  button.danger:hover { background:#5a2a2a; }
+  .row { display:flex; gap:5px; flex-wrap:wrap; align-items:center; margin-bottom:5px; }
+  .row label { color:var(--dim); min-width:62px; }
+  input[type=number] { width:90px; }
+  .hint { color:#7d848e; font-size:12px; }
+  .mono { font-variant-numeric:tabular-nums; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; }
+  .list .item { display:flex; align-items:center; gap:6px; padding:3px 6px; border-radius:3px;
+                cursor:pointer; user-select:none; }
+  .list .item:hover { background:#24272c; }
+  .list .item.on { background:var(--accent); }
+  .list .item .name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .list .item .x { color:var(--dim); padding:0 4px; } .list .item .x:hover { color:var(--err); }
+  .badge { display:inline-block; padding:0 6px; border-radius:9px; font-size:11px; font-weight:600;
+           color:#111; background:var(--dim); }
+  .badge.goal { background:var(--ok); } .badge.collision { background:var(--err); }
+  .badge.timeout, .badge.out_of_bounds { background:var(--warn); } .badge.fault { background:var(--fault); }
+  .badge.running { background:#6aa0d8; } .badge.failed, .badge.cancelled { background:#777; }
+  table.kv { width:100%; border-collapse:collapse; }
+  table.kv td { padding:0 4px; vertical-align:top; line-height:1.4; } table.kv td:first-child { color:var(--dim); width:42%; }
+  pre.log { max-height:180px; overflow:auto; background:#0c0d10; border:1px solid var(--line);
+            padding:6px; font-size:11px; white-space:pre-wrap; word-break:break-all; margin:4px 0; }
+  #log { max-height:90px; }
+  #agentInfo pre { white-space:pre; overflow-x:auto; max-height:240px; font-size:10.5px; }
+  #problems div { padding:3px 6px; border-radius:3px; margin-bottom:3px; background:#24272c;
+                  border-left:3px solid var(--line); font-size:12px; }
+  #problems .error { border-left-color:var(--err); } #problems .warning { border-left-color:var(--warn); }
+  #problems code { color:var(--dim); }
+  #obs { display:flex; gap:8px; align-items:flex-start; }
+  #obs img, #obs canvas { width:200px; height:200px; flex:none; image-rendering:pixelated;
+                          border:1px solid var(--line); background:#0c0d10; }
+  #obs table.kv { font-size:11px; } #obs .hint { font-size:11px; }
+  #spark { width:100%; height:80px; display:block; background:#0c0d10; border:1px solid var(--line); cursor:crosshair; }
+  #dirty.on { color:var(--warn); }
+  #toast { position:absolute; left:10px; top:10px; max-width:70%; background:#000c; padding:6px 10px;
+           border-radius:4px; border-left:3px solid var(--err); display:none; white-space:pre-wrap; z-index:2; }
+  #banner { position:absolute; right:10px; top:10px; background:#000b; padding:4px 8px; border-radius:4px;
+            display:none; color:var(--warn); z-index:2; }
+  progress { width:100%; height:8px; }
+</style>
+
+<div id="left">
+  <h1>usvnav studio</h1>
+  <div class="hint mono" id="workdir"></div>
+
+  <h2>Courses</h2>
+  <div class="row">
+    <button id="bNewCourse" title="a blank, valid course">New</button>
+    <button id="bSave">Save</button>
+    <button id="bSaveAs">Save as…</button>
+    <button id="bDeleteCourse" class="danger">Delete</button>
+  </div>
+  <div id="courses" class="list"></div>
+  <div id="dirty" class="hint"></div>
+
+  <h2>Rules <span class="hint">(every rule, on save)</span></h2>
+  <div id="problems"><div class="hint">Save to check every rule, including ordered connectivity (<code>connected</code>).</div></div>
+
+  <h2>Agents</h2>
+  <div class="row">
+    <button id="bNewAgent" title="copy the worked example into agents/">New from example</button>
+    <button id="bCheckAgent" title="the submission validator, quick settings">Validate</button>
+  </div>
+  <div id="agents" class="list"></div>
+  <div id="agentInfo" class="hint"></div>
+
+  <h2>Run</h2>
+  <div class="row"><label>condition</label><select id="condition"></select></div>
+  <div class="row"><label>noise</label><select id="noise" title="renderer noise for the 1-2/1-4 picture: applies to every run started here and to What the agent saw. Scoring uses none. Add your own functions to noise.py in this work folder."></select></div>
+  <div class="row"><label>seed</label><input id="seed" type="number" value="0" step="1">
+    <button id="bRandom" title="a fresh 1-4 disturbance (the traffic phase is fixed in the course)">random</button></div>
+  <div class="row"><button id="bRun" class="primary">▶ Run</button><button id="bCancel" disabled>■ Cancel</button></div>
+  <div id="runStatus" class="hint"></div>
+
+  <h2>Runs</h2>
+  <div id="runs" class="list"></div>
+</div>
+
+<div id="stage">
+  <iframe id="ed" src="/editor.html?embedded=1"></iframe>
+  <div id="toast"></div>
+  <div id="banner"></div>
+</div>
+
+<div id="transport">
+  <button id="bPlay" title="space">▶</button>
+  <input id="slider" type="range" min="0" max="0" value="0" disabled>
+  <span id="tickLabel" class="mono">no run</span>
+  <select id="speed" title="playback speed">
+    <option value="0.5">½×</option><option value="1">1×</option><option value="2">2×</option>
+    <option value="5" selected>5×</option><option value="10">10×</option><option value="25">25×</option>
+  </select>
+  <label class="hint"><input type="checkbox" id="trail" checked> trail</label>
+  <label class="hint"><input type="checkbox" id="follow"> follow</label>
+  <button id="bDrawer" title="show or hide the result panel">▾ result</button>
+</div>
+
+<div id="drawer">
+  <div>
+    <h2>Result</h2>
+    <div id="result"><div class="hint">No run loaded. Pick a course and an agent, press Run.</div></div>
+  </div>
+  <div>
+    <h2>Clearance over the run <span class="hint">(m, surface to surface)</span></h2>
+    <canvas id="spark" width="600" height="80"></canvas>
+    <div class="hint" id="sparkHint" style="font-size:11px"></div>
+    <h2 style="margin-top:8px">Agent output</h2>
+    <pre id="log" class="log"></pre>
+  </div>
+  <div>
+    <h2>What the agent saw</h2>
+    <div class="row"><select id="view"></select><button id="bObserve" disabled>Show at this tick</button></div>
+    <div id="obs"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const PAL = {water:"#16303B", bank:"#77725C", dock:"#6B4F35", pier:"#7E7B73", vessel:"#53606B",
+             ego:"#F26E7A", buoy:"#F0C820"};
+
+// --------------------------------------------------------------- server
+async function api(method, path, body){
+  const init = {method, headers:{}};
+  if (body !== undefined){ init.headers["Content-Type"] = "application/json"; init.body = JSON.stringify(body); }
+  const r = await fetch(path, init);
+  const ct = r.headers.get("content-type") || "";
+  const data = ct.includes("json") ? await r.json() : await r.blob();
+  if (!r.ok) throw new Error(data && data.error ? data.error : r.statusText);
+  return data;
+}
+let toastTimer = null;
+function toast(msg, ms=6000){
+  const t = $("toast"); t.textContent = msg; t.style.display = "block";
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = "none", ms);
+}
+function banner(msg){ const b = $("banner"); b.textContent = msg || ""; b.style.display = msg ? "block" : "none"; }
+
+// --------------------------------------------------------------- state
+let S = {courses:[], agents:[], runs:[], conditions:[], dt:0.1, hull:[3,2]};
+let cur = {course:null, saved:null, agent:null};
+let ed = null;                       // the editor's handle, once the iframe has loaded
+let run = null;                      // the loaded run record
+let play = {tick:0, playing:false, lastMs:0};
+let watching = null;                 // the id of the run being polled
+
+const ef = $("ed");
+ef.addEventListener("load", async () => {
+  ed = ef.contentWindow.usvnavEditor;
+  // Keys pressed inside the editor still drive playback; its own keys (delete, rotate) run first.
+  ef.contentWindow.addEventListener("keydown", keys);
+  await refresh();
+  if (S.courses.length) await loadCourse(S.courses[0].name);
+  if (S.agents.length) selectAgent(S.agents[0].name);
+});
+
+async function refresh(){
+  S = await api("GET", "/api/state");
+  $("workdir").textContent = S.workdir;
+  if (!$("condition").options.length){
+    for (const c of S.conditions){
+      $("condition").add(new Option(c, c));
+      $("view").add(new Option(c, c));
+    }
+  }
+  // the noise list follows noise.py, so it is rebuilt on every refresh; the choice sticks
+  const noiseKey = "usvnav.noise:" + S.workdir, want = $("noise").value || localStorage.getItem(noiseKey) || "none";
+  $("noise").innerHTML = "";
+  for (const n of (S.noises || ["none"])) $("noise").add(new Option(n === "grain" ? "grain (kit example)" : n, n));
+  $("noise").value = (S.noises || []).includes(want) ? want : "none";
+  $("noise").onchange = () => localStorage.setItem(noiseKey, $("noise").value);
+  renderCourses(); renderAgents(); renderRuns();
+}
+
+// --------------------------------------------------------------- courses
+function renderCourses(){
+  const box = $("courses"); box.innerHTML = "";
+  if (!S.courses.length) box.innerHTML = "<div class='hint'>No courses yet — New.</div>";
+  for (const c of S.courses){
+    const d = document.createElement("div"); d.className = "item" + (c.name === cur.course ? " on" : "");
+    d.innerHTML = `<span class="name">${c.name}</span>`;
+    d.title = `${c.name}.json — ${c.modified}`;
+    d.onclick = () => loadCourse(c.name);
+    box.appendChild(d);
+  }
+}
+function isDirty(){ return !!(ed && cur.course && JSON.stringify(ed.toJSON()) !== cur.saved); }
+async function loadCourse(name, force){
+  if (!force && isDirty() && !confirm(`Discard unsaved changes to ${cur.course}?`)) return;
+  const data = await api("GET", "/api/course/" + encodeURIComponent(name));
+  ed.course = data; ed.frame(); ed.refresh();
+  cur.course = name; cur.saved = JSON.stringify(ed.toJSON());
+  $("problems").innerHTML = "<div class='hint'>Save to check every rule, including ordered connectivity (<code>connected</code>).</div>";
+  renderCourses(); syncBanner();
+}
+async function saveCourse(name){
+  name = name || cur.course;
+  if (!name) return toast("No course is loaded. New, or pick one.");
+  const res = await api("PUT", "/api/course/" + encodeURIComponent(name), ed.toJSON());
+  cur.course = name; cur.saved = JSON.stringify(ed.toJSON());
+  renderProblems(res.problems);
+  await refresh(); syncBanner();
+  return res;
+}
+function renderProblems(ps){
+  const box = $("problems");
+  box.innerHTML = ps.length ? "" : "<div class='hint'>Every rule passes. This course can be run and scored.</div>";
+  for (const p of ps){
+    const d = document.createElement("div"); d.className = p.severity;
+    d.innerHTML = `<code>${p.rule}</code> ${p.message}`; box.appendChild(d);
+  }
+}
+function askName(what, initial){
+  const n = prompt(`${what} name (letters, digits, . _ -):`, initial || "");
+  if (n === null) return null;
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(n)){ toast(`"${n}" is not a usable name`); return null; }
+  return n;
+}
+$("bNewCourse").onclick = async () => {
+  if (isDirty() && !confirm(`Discard unsaved changes to ${cur.course}?`)) return;
+  const n = askName("New course", "course-" + (S.courses.length + 1)); if (!n) return;
+  if (S.courses.some(c => c.name === n) && !confirm(`${n} exists. Overwrite it with a blank course?`)) return;
+  ed.course = ed.blank(); ed.frame(); ed.refresh();
+  cur.course = n; cur.saved = null;
+  await saveCourse(n).catch(e => toast(e.message));
+};
+$("bSave").onclick = () => saveCourse().catch(e => toast(e.message));
+$("bSaveAs").onclick = async () => {
+  const n = askName("Save as", cur.course ? cur.course + "-copy" : "course"); if (!n) return;
+  if (S.courses.some(c => c.name === n) && !confirm(`${n} exists. Overwrite?`)) return;
+  await saveCourse(n).catch(e => toast(e.message));
+};
+$("bDeleteCourse").onclick = async () => {
+  if (!cur.course) return;
+  if (!confirm(`Delete courses/${cur.course}.json? Runs made on it keep their own copy.`)) return;
+  await api("DELETE", "/api/course/" + encodeURIComponent(cur.course)).catch(e => toast(e.message));
+  cur.course = null; cur.saved = null;
+  await refresh();
+  if (S.courses.length) await loadCourse(S.courses[0].name);
+};
+setInterval(() => {
+  const d = isDirty();
+  $("dirty").textContent = cur.course ? (d ? "unsaved changes — Run saves first" : "saved") : "";
+  $("dirty").classList.toggle("on", d);
+}, 700);
+
+// --------------------------------------------------------------- agents
+function renderAgents(){
+  const box = $("agents"); box.innerHTML = "";
+  if (!S.agents.length) box.innerHTML = "<div class='hint'>No agents yet — New from example.</div>";
+  for (const a of S.agents){
+    const d = document.createElement("div"); d.className = "item" + (a.name === cur.agent ? " on" : "");
+    d.innerHTML = `<span class="name">${a.name}</span><span class="hint">${a.ok ? a.team : "broken"}</span>`;
+    d.onclick = () => selectAgent(a.name);
+    box.appendChild(d);
+  }
+  if (cur.agent && !S.agents.some(a => a.name === cur.agent)) cur.agent = null;
+}
+function selectAgent(name){
+  cur.agent = name; renderAgents();
+  const a = S.agents.find(x => x.name === name);
+  $("agentInfo").innerHTML = !a ? "" : a.ok
+    ? `<span class="mono">${a.path}</span><br><code>team</code> <b>${a.team}</b> · entry <code>${a.entry}</code><br>` +
+      `Edit <code>agent.py</code> there; the next Run reloads it.`
+    : `<span class="mono">${a.path}</span><br><span style="color:var(--err)">${a.problem}</span>`;
+}
+$("bNewAgent").onclick = async () => {
+  const n = askName("New agent (a submission directory under agents/)", "agent-" + (S.agents.length)); if (!n) return;
+  try { await api("POST", "/api/agent/" + encodeURIComponent(n), {}); await refresh(); selectAgent(n); }
+  catch (e) { toast(e.message); }
+};
+$("bCheckAgent").onclick = async () => {
+  if (!cur.agent) return toast("Pick an agent first.");
+  $("agentInfo").innerHTML = `<span class="hint">validating agents/${cur.agent} — a smoke run under every condition, about ten seconds…</span>`;
+  try {
+    const r = await api("POST", `/api/agent/${encodeURIComponent(cur.agent)}/check`);
+    $("agentInfo").innerHTML = `<pre class="log">${esc(r.text)}</pre>`;
+  } catch (e) { toast(e.message); selectAgent(cur.agent); }
+};
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+// --------------------------------------------------------------- runs
+$("bRandom").onclick = () => $("seed").value = Math.floor(Math.random() * 1e6);
+$("bRun").onclick = async () => {
+  if (!cur.course) return toast("Load or create a course first.");
+  if (!cur.agent) return toast("Pick an agent first.");
+  try {
+    if (isDirty() || cur.saved === null) await saveCourse();
+    const r = await api("POST", "/api/run", {course:cur.course, agent:cur.agent,
+                        condition:$("condition").value, seed:parseInt($("seed").value || "0", 10),
+                        noise:$("noise").value || "none"});
+    watch(r.id);
+  } catch (e) { toast(e.message); }
+};
+$("bCancel").onclick = () => watching && api("POST", `/api/run/${watching}/cancel`).catch(e => toast(e.message));
+
+function watch(id){
+  watching = id; $("bRun").disabled = true; $("bCancel").disabled = false;
+  $("runStatus").innerHTML = `starting…<progress max="1" value="0"></progress>`;
+  const tick = async () => {
+    if (watching !== id) return;
+    let m;
+    try { m = await api("GET", "/api/run/" + id); } catch (e) { toast(e.message); return stopWatch(); }
+    $("log").textContent = m.log || "";
+    if (m.status === "running"){
+      const lim = S.tick_limit || 6000;
+      $("runStatus").innerHTML = `running ${m.condition} seed ${m.seed} — tick ${m.tick || 0}` +
+        `<progress max="${lim}" value="${m.tick || 0}"></progress>`;
+      setTimeout(tick, 400); return;
+    }
+    stopWatch();
+    await refresh();
+    if (m.status === "done"){ $("runStatus").textContent = ""; await loadRun(id); }
+    else { $("runStatus").innerHTML = `<span class="badge ${m.status}">${m.status}</span> ${esc(m.error || "")}`; }
+  };
+  tick();
+}
+function stopWatch(){ watching = null; $("bRun").disabled = false; $("bCancel").disabled = true; }
+
+function renderRuns(){
+  const box = $("runs"); box.innerHTML = "";
+  if (!S.runs.length) box.innerHTML = "<div class='hint'>Nothing has run yet.</div>";
+  for (const m of S.runs){
+    const d = document.createElement("div"); d.className = "item" + (run && run.id === m.id ? " on" : "");
+    const r = m.result || {};
+    const b = m.status !== "done" ? m.status : r.outcome;
+    const noise = m.noise && m.noise !== "none" ? ` · ${m.noise}` : "";
+    d.innerHTML = `<span class="name" title="${m.started}">${m.course} · ${m.agent} · ${m.condition} · s${m.seed}${noise}</span>` +
+                  `<span class="badge ${badgeClass(m)}">${b}</span><span class="x" title="delete this run">×</span>`;
+    d.onclick = ev => {
+      if (ev.target.classList.contains("x")){ deleteRun(m.id); return; }
+      if (m.status === "done") loadRun(m.id); else if (m.status === "running") watch(m.id);
+      else toast(m.error || m.status);
+    };
+    box.appendChild(d);
+  }
+}
+function badgeClass(m){
+  if (m.status !== "done") return m.status;
+  const o = m.result.outcome;
+  if (o === "goal") return "goal";
+  if (o.endsWith("collision")) return "collision";
+  if (m.result.tier === "submission_fault") return "fault";
+  return o;
+}
+async function deleteRun(id){
+  if (!confirm("Delete this run's record?")) return;
+  await api("DELETE", "/api/run/" + id).catch(e => toast(e.message));
+  if (run && run.id === id){ run = null; renderResult(); syncBanner(); }
+  await refresh();
+}
+
+async function loadRun(id){
+  const rec = await api("GET", `/api/run/${id}/record`);
+  if (rec.course !== cur.course){
+    if (isDirty() && !confirm(`This run was made on ${rec.course}. Discard unsaved changes to ${cur.course} and open it?`)) return;
+    if (S.courses.some(c => c.name === rec.course)) await loadCourse(rec.course, true);
+    else { ed.course = rec.course_snapshot; ed.frame(); ed.refresh(); cur.course = null; cur.saved = null; renderCourses(); }
+  }
+  run = rec;
+  $("slider").max = rec.frames.length - 1; $("slider").disabled = false; $("bObserve").disabled = false;
+  $("view").value = rec.condition;
+  setTick(rec.frames.length - 1);            // show where it ended first; ▶ plays from the start
+  play.playing = false; $("bPlay").textContent = "▶";
+  renderResult(); drawSpark(); renderRuns(); syncBanner();
+  $("log").textContent = (await api("GET", "/api/run/" + id)).log || "";
+}
+/** The overlay is drawn only on the course the run was made on; elsewhere the result stays
+ *  in the drawer and the map says where the trajectory went. */
+function syncBanner(){
+  if (!run){ ed.overlay = null; return banner(""); }
+  if (run.course !== cur.course){ ed.overlay = null; return banner(`the loaded run was made on ${run.course} — open it to see the trajectory`); }
+  ed.overlay = overlay;
+  banner(JSON.stringify(run.course_snapshot) !== JSON.stringify(ed.toJSON())
+         ? "the course has changed since this run — the trajectory is drawn on the new shapes" : "");
+}
+
+// --------------------------------------------------------------- result
+function fmt(v, d=1){ return v === null || v === undefined ? "—" : Number(v).toFixed(d); }
+function renderResult(){
+  const box = $("result");
+  if (!run){ box.innerHTML = "<div class='hint'>No run loaded.</div>"; $("obs").innerHTML = ""; drawSpark(); return; }
+  const r = run.result, o = r.outcome;
+  const cause = {goal:"reached every waypoint in order", static_collision:"the hull touched a bank, buoy, pier, moored vessel or dock",
+                 dynamic_collision:"the hull touched a moving vessel", out_of_bounds:"the hull left the navigable boundary",
+                 timeout:`the tick limit (${S.tick_limit}) ran out`, crash:"the agent raised an exception",
+                 invalid_action:"the agent returned something other than two finite numbers",
+                 time_overrun:"the episode's wall-clock limit ran out"}[o] || "";
+  const changed = JSON.stringify(run.course_snapshot) !== JSON.stringify(ed.toJSON());
+  box.innerHTML = `
+    <div class="row"><span class="badge ${badgeClass({status:"done", result:r})}" style="font-size:12px;padding:1px 8px">${o}</span>
+      <span class="hint">${r.tier === "submission_fault" ? "submission fault — scored 0, listed apart" : "navigational"}</span></div>
+    <div class="hint" style="margin-bottom:6px">${cause}</div>
+    <table class="kv">
+      <tr><td>course · agent</td><td>${run.course} · ${run.agent}${run.agent_team ? " (" + run.agent_team + ")" : ""}</td></tr>
+      <tr><td>condition · seed</td><td>${run.condition} · ${run.seed}</td></tr>
+      <tr><td>waypoints</td><td>${r.waypoints_reached} of ${run.n_waypoints}</td></tr>
+      <tr><td>ticks</td><td class="mono">${r.ticks} (${fmt(r.elapsed)} s simulated)</td></tr>
+      <tr><td>distance</td><td class="mono">${fmt(r.distance)} m</td></tr>
+      <tr><td>clearance statistic</td><td class="mono">${fmt(r.clearance, 2)} m <span class="hint">(what scoring uses)</span></td></tr>
+      <tr><td>closest approach</td><td class="mono">${fmt(r.clearance_min, 2)} m at tick <a href="#" id="jumpMin">${r.clearance_min_tick}</a></td></tr>
+      <tr><td>wall clock</td><td class="mono">${fmt(r.wall_s)} s, ${fmt(r.ms_per_tick, 2)} ms/tick</td></tr>
+      <tr><td>started</td><td class="mono">${run.started}</td></tr>
+    </table>
+    ${r.detail ? `<div class="hint" style="margin-top:6px">what the agent raised:</div><pre class="log">${esc(r.detail)}</pre>` : ""}
+    ${changed ? `<div class="row" style="margin-top:6px"><span class="hint">the course differs from this run's copy.</span>
+       <button id="bRestore" title="load the course exactly as it was run (unsaved)">Open the run's copy</button></div>` : ""}`;
+  const j = $("jumpMin"); if (j) j.onclick = ev => { ev.preventDefault(); setTick(r.clearance_min_tick); };
+  const b = $("bRestore"); if (b) b.onclick = () => {
+    if (isDirty() && !confirm(`Discard unsaved changes to ${cur.course}?`)) return;
+    ed.course = JSON.parse(JSON.stringify(run.course_snapshot)); ed.refresh(); syncBanner();
+  };
+}
+
+// --------------------------------------------------------------- playback
+function setTick(k){
+  if (!run) return;
+  play.tick = Math.max(0, Math.min(run.frames.length - 1, Math.round(k)));
+  $("slider").value = play.tick;
+  const f = run.frames[play.tick];
+  const c = f[10];
+  const v = f[4] === null ? `end: ${run.result.outcome}` : `v ${fmt(f[4], 2)} m/s`;
+  $("tickLabel").textContent = `tick ${f[0]} · ${(f[0] * S.dt).toFixed(1)} s · ${v} · clearance ${c === null ? "—" : fmt(c, 2) + " m"}`;
+  if ($("follow").checked){ ed.view.x = f[1]; ed.view.y = f[2]; }
+  ed.draw(); drawCursor();
+}
+$("slider").oninput = ev => { play.playing = false; $("bPlay").textContent = "▶"; setTick(+ev.target.value); };
+$("bPlay").onclick = togglePlay;
+$("bDrawer").onclick = () => {
+  const hidden = $("drawer").classList.toggle("hidden");
+  $("bDrawer").textContent = hidden ? "▴ result" : "▾ result";
+  setTimeout(() => ed && ed.draw(), 0);        // the canvas changed size
+};
+$("trail").onchange = () => ed && ed.draw();
+function togglePlay(){
+  if (!run) return;
+  if (!play.playing && play.tick >= run.frames.length - 1) play.tick = 0;
+  play.playing = !play.playing; play.lastMs = performance.now();
+  $("bPlay").textContent = play.playing ? "❚❚" : "▶";
+  if (play.playing) requestAnimationFrame(step);
+}
+function step(now){
+  if (!play.playing) return;
+  const rate = parseFloat($("speed").value) / S.dt;          // ticks per second of wall time
+  const dt = (now - play.lastMs) / 1000; play.lastMs = now;
+  const next = play.tick + rate * dt;
+  if (next >= run.frames.length - 1){ setTick(run.frames.length - 1); play.playing = false; $("bPlay").textContent = "▶"; return; }
+  setTick(next);
+  requestAnimationFrame(step);
+}
+function keys(ev){
+  if (ev.target && ev.target.tagName === "INPUT" && ev.target.type !== "range") return;
+  if (!run) return;
+  if (ev.key === " "){ ev.preventDefault(); togglePlay(); }
+  else if (ev.key === "ArrowRight"){ ev.preventDefault(); setTick(play.tick + (ev.shiftKey ? 10 : 1)); }
+  else if (ev.key === "ArrowLeft"){ ev.preventDefault(); setTick(play.tick - (ev.shiftKey ? 10 : 1)); }
+  else if (ev.key === "Home"){ setTick(0); } else if (ev.key === "End"){ setTick(run.frames.length - 1); }
+}
+window.addEventListener("keydown", keys);
+
+/** Drawn by the editor at the end of every repaint, in its transform (see editor.html). */
+function overlay(ctx, toScreen, view, Sx){
+  if (!run) return;
+  const F = run.frames, k = play.tick, f = F[k];
+  const rect = (x, y, L, W, h) => {
+    const c = Math.cos(h), s = Math.sin(h), hl = L / 2, hw = W / 2;
+    const P = [[hl, hw], [hl, -hw], [-hl, -hw], [-hl, hw]].map(([a, b]) => toScreen(x + a * c - b * s, y + a * s + b * c));
+    ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+  };
+  // the trail, past in full and future faint, so the whole run is legible while scrubbing
+  if ($("trail").checked){
+    ctx.lineWidth = 1.5 * Sx; ctx.lineJoin = "round";
+    const seg = (a, b, col) => { if (b <= a) return; ctx.strokeStyle = col; ctx.beginPath();
+      for (let i = a; i <= b; i++){ const p = toScreen(F[i][1], F[i][2]); i === a ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]); }
+      ctx.stroke(); };
+    seg(k, F.length - 1, "#F26E7A40"); seg(0, k, "#F26E7A");
+  }
+  // traffic where it was at this tick
+  (run.traffic[k] || []).forEach((q, i) => {
+    const [L, W] = q.length >= 5 ? [q[3], q[4]] : run.traffic_dims[i];
+    ctx.fillStyle = PAL.vessel; ctx.strokeStyle = "#cfe8ff"; ctx.lineWidth = 1.2 * Sx;
+    rect(q[0], q[1], L, W, q[2]); ctx.fill(); ctx.stroke();
+    const bow = toScreen(q[0] + Math.cos(q[2]) * L / 2, q[1] + Math.sin(q[2]) * L / 2);
+    ctx.fillStyle = "#cfe8ff"; ctx.beginPath(); ctx.arc(bow[0], bow[1], 2 * Sx, 0, 6.284); ctx.fill();
+  });
+  // the hull
+  const [L, W] = S.hull;
+  ctx.fillStyle = PAL.ego; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5 * Sx;
+  rect(f[1], f[2], L, W, f[3]); ctx.fill(); ctx.stroke();
+  const bow = toScreen(f[1] + Math.cos(f[3]) * L * 0.9, f[2] + Math.sin(f[3]) * L * 0.9);
+  const ctr = toScreen(f[1], f[2]);
+  ctx.strokeStyle = "#fff"; ctx.beginPath(); ctx.moveTo(ctr[0], ctr[1]); ctx.lineTo(bow[0], bow[1]); ctx.stroke();
+  // the end, marked
+  if (k === F.length - 1){
+    const o = run.result.outcome, col = o === "goal" ? "#3fae6a" : o.endsWith("collision") || o === "out_of_bounds" ? "#ff6b6b" : "#ffcc44";
+    ctx.strokeStyle = col; ctx.lineWidth = 2 * Sx; ctx.beginPath();
+    ctx.arc(ctr[0], ctr[1], Math.max(10 * Sx, 4 * view.s * Sx), 0, 6.284); ctx.stroke();
+  }
+}
+
+// --------------------------------------------------------------- clearance sparkline
+const sp = $("spark"), spx = sp.getContext("2d", {willReadFrequently:true});
+let sparkCache = null;               // {run, image}: the curve, drawn once per run
+function drawSpark(){
+  const w = sp.width, h = sp.height;
+  spx.clearRect(0, 0, w, h);
+  if (!run){ $("sparkHint").textContent = ""; sparkCache = null; return; }
+  const F = run.frames, n = F.length, cap = 10;
+  spx.strokeStyle = "#33373d"; spx.beginPath();
+  for (const m of [2, 5]){ const y = h - 4 - (m / cap) * (h - 8); spx.moveTo(0, y); spx.lineTo(w, y); }
+  spx.stroke();
+  spx.strokeStyle = "#7fd0b8"; spx.lineWidth = 1; spx.beginPath();
+  let started = false;
+  for (let i = 0; i < n; i++){
+    const c = F[i][10]; if (c === null) continue;
+    const x = (i / Math.max(n - 1, 1)) * (w - 1), y = h - 4 - (Math.min(Math.max(c, 0), cap) / cap) * (h - 8);
+    started ? spx.lineTo(x, y) : spx.moveTo(x, y); started = true;
+  }
+  spx.stroke();
+  sparkCache = {run, image: spx.getImageData(0, 0, w, h)};
+  $("sparkHint").textContent = "lines at 2 m and 5 m; values are capped at 10 m. Click to jump.";
+  drawCursor();
+}
+function drawCursor(){
+  if (!run) return;
+  if (!sparkCache || sparkCache.run !== run) return drawSpark();
+  spx.putImageData(sparkCache.image, 0, 0);
+  const x = (play.tick / Math.max(run.frames.length - 1, 1)) * (sp.width - 1);
+  spx.strokeStyle = "#ffffffaa"; spx.beginPath(); spx.moveTo(x, 0); spx.lineTo(x, sp.height); spx.stroke();
+}
+sp.onclick = ev => { if (!run) return; const r = sp.getBoundingClientRect();
+  setTick((ev.clientX - r.left) / r.width * (run.frames.length - 1)); };
+
+// --------------------------------------------------------------- what the agent saw
+$("bObserve").onclick = async () => {
+  if (!run) return;
+  const view = $("view").value, box = $("obs");
+  box.innerHTML = "<div class='hint'>rendering…</div>";
+  try {
+    const r = await fetch(`/api/run/${run.id}/observe/${play.tick}?view=${view}`);
+    if (!r.ok) throw new Error((await r.json()).error);
+    const note = view !== run.condition ? `<div class="hint">${view}'s perception rendered from the state of this ${run.condition} run</div>` : "";
+    if ((r.headers.get("content-type") || "").startsWith("image/")){
+      const url = URL.createObjectURL(await r.blob());
+      box.innerHTML = `<img src="${url}" alt="raster at tick ${play.tick}"><div>${note}` +
+        `<div class="hint">tick ${play.tick}: 200 × 200 px at 0.5 m/px, bow up, drawn by the same renderer the run used` +
+        `${run.noise && run.noise !== "none" ? " (noise: " + run.noise + ")" : ""}; ` +
+        `open the image in a new tab to see it pixel for pixel</div></div>`;
+      return;
+    }
+    const o = await r.json();
+    const cm = o.common;
+    const common = `<table class="kv mono">
+      <tr><td>pose</td><td>${cm.pose.map(v => v.toFixed(2)).join(", ")}</td></tr>
+      <tr><td>vel (u, v, r)</td><td>${cm.vel.map(v => v.toFixed(3)).join(", ")}</td></tr>
+      <tr><td>wp_index · wp_polar</td><td>${cm.wp_index} · ${cm.wp_polar[0].toFixed(1)} m, ${(cm.wp_polar[1] * 180 / Math.PI).toFixed(1)}°</td></tr>
+      <tr><td>prev_action</td><td>${cm.prev_action.map(v => v.toFixed(2)).join(", ")}</td></tr></table>`;
+    if (o.ranges){
+      box.innerHTML = `<canvas id="lidar" width="340" height="340"></canvas><div>${note}${common}
+        <div class="hint">${o.ranges.length} beams over 360°, bow up; no return = ${o.max_range} m</div></div>`;
+      drawLidar($("lidar"), o.ranges, o.max_range);
+    } else {
+      const rows = o.objects.map(b => `<tr><td>${b.cls}</td><td class="mono">${b.pos[0].toFixed(1)}, ${b.pos[1].toFixed(1)}</td>` +
+        `<td class="mono">${b.extent[0].toFixed(1)}×${b.extent[1].toFixed(1)}</td><td class="mono">${Math.hypot(b.vel[0], b.vel[1]).toFixed(2)}</td></tr>`).join("");
+      box.innerHTML = `<div style="flex:1">${note}${common}<div class="hint">${o.objects.length} of ${o.capacity} rows valid, nearest first — class, position in body axes (m), extent, speed</div>
+        <table class="kv"><tr><td>class</td><td>x, y (body)</td><td>extent</td><td>m/s</td></tr>${rows}</table></div>`;
+    }
+  } catch (e) { box.innerHTML = `<div style="color:var(--err)">${esc(e.message)}</div>`; }
+};
+function drawLidar(cv, ranges, maxR){
+  const c = cv.getContext("2d"), w = cv.width, h = cv.height, cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 - 6;
+  c.fillStyle = "#0c0d10"; c.fillRect(0, 0, w, h);
+  c.strokeStyle = "#33373d"; for (const f of [0.25, 0.5, 0.75, 1]){ c.beginPath(); c.arc(cx, cy, R * f, 0, 6.284); c.stroke(); }
+  const n = ranges.length;
+  c.fillStyle = "#7fd0b8";
+  for (let i = 0; i < n; i++){
+    if (ranges[i] >= maxR - 1e-6) continue;
+    // beam i at angle i*360/n counter-clockwise from the bow; bow points up on screen
+    const a = i * 2 * Math.PI / n, r = ranges[i] / maxR * R;
+    const x = cx - Math.sin(a) * r, y = cy - Math.cos(a) * r;
+    c.beginPath(); c.arc(x, y, 1.6, 0, 6.284); c.fill();
+  }
+  c.fillStyle = "#F26E7A"; c.fillRect(cx - 2, cy - 3, 4, 6);
+}
+</script>

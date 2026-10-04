@@ -1,0 +1,8 @@
+{
+  "_comment": "Public nominal simulator parameters. These five are the only dials the shipped model exposes; fitting them is a valid submission and is what the example in examples/submission/ does. Units: mass kg, izz kg m^2, X_u/Y_v N per m/s, N_r N m per rad/s.",
+  "mass": 250.0,
+  "izz": 270.8,
+  "X_u": 200.0,
+  "Y_v": 300.0,
+  "N_r": 900.0
+}

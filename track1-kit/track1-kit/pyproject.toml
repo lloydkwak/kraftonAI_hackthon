@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "usvnav"
+version = "0.1.0"
+description = "Track 1 USV autonomy simulator: world, four observation conditions, course authoring"
+requires-python = ">=3.10"
+
+# numpy and nothing else. The scoring machine has no network and installs only the pinned
+# runtime (docs/RUNTIME.md), so the package needs nothing beyond numpy: the PNG writer and
+# the colour maths are stdlib and numpy for that reason, and the map editor is a single
+# HTML file so that authoring needs no dependency at all.
+dependencies = ["numpy>=1.24"]
+
+[project.scripts]
+usvnav = "usvnav.cli:main"
+
+[tool.setuptools]
+packages = ["usvnav"]

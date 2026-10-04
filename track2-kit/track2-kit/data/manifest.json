@@ -1,0 +1,76 @@
+{
+  "released": {
+    "replays": 12,
+    "per_group": 2,
+    "groups": [
+      "accel_decel",
+      "brake",
+      "lowspeed",
+      "scurve",
+      "straight",
+      "turn"
+    ],
+    "names": [
+      "accel_decel_1000",
+      "accel_decel_1001",
+      "brake_1000",
+      "brake_1001",
+      "lowspeed_1000",
+      "lowspeed_1001",
+      "scurve_1000",
+      "scurve_1001",
+      "straight_1000",
+      "straight_1001",
+      "turn_1000",
+      "turn_1001"
+    ],
+    "frames": {
+      "accel_decel_1000": "released_frames/episodes/ep_00000.npz",
+      "accel_decel_1001": "released_frames/episodes/ep_00001.npz",
+      "brake_1000": "released_frames/episodes/ep_00002.npz",
+      "brake_1001": "released_frames/episodes/ep_00003.npz",
+      "lowspeed_1000": "released_frames/episodes/ep_00004.npz",
+      "lowspeed_1001": "released_frames/episodes/ep_00005.npz",
+      "scurve_1000": "released_frames/episodes/ep_00006.npz",
+      "scurve_1001": "released_frames/episodes/ep_00007.npz",
+      "straight_1000": "released_frames/episodes/ep_00008.npz",
+      "straight_1001": "released_frames/episodes/ep_00009.npz",
+      "turn_1000": "released_frames/episodes/ep_00010.npz",
+      "turn_1001": "released_frames/episodes/ep_00011.npz"
+    },
+    "seconds": 60.0,
+    "note": "every released replay (12, two per group) is also in released_frames/ as one t2-2-dataset/1 episode -- the calibration drive seen through the reference camera, no guide vessel: a frame every 0.5 s from t = 0 (log sample 5k - 1 at decision k), the log's measured motion at the same instants, the command in force; `actuator_state` is that command with the azimuth clipped -- the reference's actuator feedback is withheld"
+  },
+  "measurement_model": {
+    "position_sigma_m": 0.02,
+    "position_quantisation_m": 0.01,
+    "heading_sigma_deg": 0.3,
+    "surge_sigma_ms": 0.02,
+    "sway_sigma_ms": 0.02,
+    "yaw_rate_sigma_deg_s": 0.5,
+    "note": "zero-mean, independent per sample, drawn once and frozen",
+    "current": {
+      "speed_ms": [
+        0.03,
+        0.1
+      ],
+      "direction": "uniform",
+      "note": "a constant water current per released replay, drawn once and not disclosed"
+    }
+  },
+  "columns": {
+    "commands": [
+      "T_stern",
+      "delta",
+      "T_bow"
+    ],
+    "states": [
+      "x",
+      "y",
+      "heading",
+      "surge",
+      "sway",
+      "yaw_rate"
+    ]
+  }
+}

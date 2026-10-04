@@ -1,0 +1,80 @@
+{
+  "E_base_hidden": {
+    "accel_decel": 1.813257,
+    "brake": 1.809233,
+    "lowspeed": 1.462016,
+    "scurve": 2.130293,
+    "straight": 2.028126,
+    "turn": 1.943378
+  },
+  "E_base_hidden_note": "E_base_hidden is the shipped simulator's per-group error on the leaderboard set",
+  "E_base_released": {
+    "accel_decel": 1.803403,
+    "brake": 1.792034,
+    "lowspeed": 1.59784,
+    "scurve": 2.061029,
+    "straight": 1.942005,
+    "turn": 1.815245
+  },
+  "metric": {
+    "channels": [
+      "position",
+      "heading",
+      "surge",
+      "yawrate"
+    ],
+    "clip": 3.0,
+    "normalisation": {
+      "heading": 0.2,
+      "position": 1.0,
+      "surge": 0.3,
+      "yawrate": 0.15
+    }
+  },
+  "released_current": {
+    "constant_over_replay": true,
+    "direction": "uniform",
+    "note": "every released replay ran in a weak constant water current of its own, drawn once and not disclosed; positions are ground-relative, velocities water-relative",
+    "speed_ms": [
+      0.03,
+      0.1
+    ]
+  },
+  "replay": {
+    "command_hz": 20.0,
+    "hidden_seconds": 120.0,
+    "initial_state": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "log_hz": 10.0,
+    "released_seconds": 60.0,
+    "scoring_groups": [
+      "straight",
+      "accel_decel",
+      "turn",
+      "scurve",
+      "brake",
+      "lowspeed"
+    ],
+    "segment_duration_probabilities": [
+      0.15,
+      0.3,
+      0.25,
+      0.15,
+      0.15
+    ],
+    "segment_durations_seconds": [
+      0.5,
+      1.0,
+      2.0,
+      4.0,
+      8.0
+    ],
+    "segment_note": "each segment's duration is drawn from these; the brake group's legs have their own lengths"
+  }
+}

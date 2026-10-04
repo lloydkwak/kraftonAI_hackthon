@@ -1,0 +1,880 @@
+{
+ "format": "usvnav-course/2",
+ "world": {
+  "boundary": [
+   [
+    141.2243,
+    37.718
+   ],
+   [
+    111.3566,
+    34.1251
+   ],
+   [
+    112.269,
+    26.5401
+   ],
+   [
+    105.7781,
+    25.7593
+   ],
+   [
+    104.8657,
+    33.3442
+   ],
+   [
+    97.5155,
+    32.4601
+   ],
+   [
+    87.9818,
+    32.2144
+   ],
+   [
+    35.8651,
+    35.2937
+   ],
+   [
+    0.0,
+    33.5432
+   ],
+   [
+    0.0,
+    115.5751
+   ],
+   [
+    32.4392,
+    110.2717
+   ],
+   [
+    36.1349,
+    109.9913
+   ],
+   [
+    91.4281,
+    111.9629
+   ],
+   [
+    92.4505,
+    112.0166
+   ],
+   [
+    92.0501,
+    119.6457
+   ],
+   [
+    98.5787,
+    119.9884
+   ],
+   [
+    98.9791,
+    112.3592
+   ],
+   [
+    133.8579,
+    114.1897
+   ],
+   [
+    143.4527,
+    114.2369
+   ],
+   [
+    156.4034,
+    113.6032
+   ],
+   [
+    190.0424,
+    114.6677
+   ],
+   [
+    255.9916,
+    116.1023
+   ],
+   [
+    317.05,
+    111.1982
+   ],
+   [
+    360.7655,
+    103.7945
+   ],
+   [
+    400.0,
+    100.3799
+   ],
+   [
+    400.0,
+    50.7188
+   ],
+   [
+    371.0404,
+    52.6055
+   ],
+   [
+    354.6468,
+    52.0845
+   ],
+   [
+    321.8173,
+    52.2356
+   ],
+   [
+    256.0084,
+    48.0789
+   ],
+   [
+    200.3287,
+    47.0022
+   ],
+   [
+    196.9966,
+    46.6299
+   ],
+   [
+    153.8918,
+    38.7433
+   ]
+  ],
+  "terrain_extent": [
+   -70.7107,
+   -44.9514,
+   470.7107,
+   190.699
+  ]
+ },
+ "start": {
+  "x": 74.7107,
+  "y": 72.1719,
+  "heading_rad": 0.008559
+ },
+ "waypoints": [
+  {
+   "x": 204.3436,
+   "y": 97.6493,
+   "arrival_radius_m": 5.0
+  },
+  {
+   "x": 245.3143,
+   "y": 58.9267,
+   "arrival_radius_m": 5.0
+  },
+  {
+   "x": 284.8339,
+   "y": 65.6768,
+   "arrival_radius_m": 5.0
+  },
+  {
+   "x": 324.9158,
+   "y": 76.057,
+   "arrival_radius_m": 5.0
+  },
+  {
+   "x": 247.6762,
+   "y": 96.9115,
+   "arrival_radius_m": 5.0
+  },
+  {
+   "x": 168.6965,
+   "y": 95.2368,
+   "arrival_radius_m": 5.0
+  },
+  {
+   "x": 122.9811,
+   "y": 52.7772,
+   "arrival_radius_m": 5.0
+  },
+  {
+   "x": 74.7107,
+   "y": 72.1719,
+   "arrival_radius_m": 3.0
+  }
+ ],
+ "bodies": [
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 184.2375,
+   "y": 99.9469,
+   "length_m": 16.1329,
+   "width_m": 8.1052,
+   "heading_rad": 0.127028
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 265.966,
+   "y": 66.2495,
+   "length_m": 9.7243,
+   "width_m": 4.3581,
+   "heading_rad": 0.655264
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 309.2259,
+   "y": 64.8688,
+   "length_m": 19.7742,
+   "width_m": 4.9702,
+   "heading_rad": 0.604342
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 304.2322,
+   "y": 67.3932,
+   "length_m": 13.5692,
+   "width_m": 8.3192,
+   "heading_rad": 0.198825
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 264.1507,
+   "y": 96.0137,
+   "length_m": 13.0334,
+   "width_m": 8.2305,
+   "heading_rad": -2.625814
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 133.1111,
+   "y": 66.6626,
+   "length_m": 16.7152,
+   "width_m": 5.065,
+   "heading_rad": 3.053817
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 225.1951,
+   "y": 88.8329,
+   "length_m": 8.4348,
+   "width_m": 4.4135,
+   "heading_rad": 0.147023
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 220.3956,
+   "y": 94.0989,
+   "length_m": 10.5089,
+   "width_m": 8.298,
+   "heading_rad": 0.038993
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 135.1587,
+   "y": 87.3384,
+   "length_m": 17.0099,
+   "width_m": 9.7427,
+   "heading_rad": 0.69703
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 132.6253,
+   "y": 87.0784,
+   "length_m": 12.7613,
+   "width_m": 8.5688,
+   "heading_rad": 0.808903
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 132.5718,
+   "y": 87.9017,
+   "length_m": 18.7592,
+   "width_m": 8.0522,
+   "heading_rad": -0.523421
+  },
+  {
+   "class": "moored_vessel",
+   "primitive": "rect",
+   "x": 202.8491,
+   "y": 70.711,
+   "length_m": 33.175,
+   "width_m": 5.4484,
+   "heading_rad": 0.009217
+  },
+  {
+   "class": "moored_vessel",
+   "primitive": "rect",
+   "x": 298.6748,
+   "y": 87.8168,
+   "length_m": 18.3066,
+   "width_m": 6.6525,
+   "heading_rad": -0.006453
+  },
+  {
+   "class": "moored_vessel",
+   "primitive": "rect",
+   "x": 152.4654,
+   "y": 103.4463,
+   "length_m": 20.4898,
+   "width_m": 9.5222,
+   "heading_rad": 0.075999
+  },
+  {
+   "class": "moored_vessel",
+   "primitive": "rect",
+   "x": 222.6321,
+   "y": 52.8596,
+   "length_m": 29.0207,
+   "width_m": 6.1217,
+   "heading_rad": 0.037
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 243.0259,
+   "y": 81.4137,
+   "length_m": 10.4083,
+   "width_m": 7.0856,
+   "heading_rad": 0.182784
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 156.8906,
+   "y": 50.3571,
+   "length_m": 15.0941,
+   "width_m": 5.586,
+   "heading_rad": 0.404643
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 156.846,
+   "y": 55.1268,
+   "length_m": 18.3019,
+   "width_m": 7.745,
+   "heading_rad": -0.060857
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 284.6363,
+   "y": 100.3224,
+   "length_m": 8.6166,
+   "width_m": 4.3187,
+   "heading_rad": -0.822034
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 282.0245,
+   "y": 99.1751,
+   "length_m": 10.2085,
+   "width_m": 7.7274,
+   "heading_rad": 0.570752
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 165.4693,
+   "y": 77.4892,
+   "length_m": 11.609,
+   "width_m": 4.536,
+   "heading_rad": 0.661335
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 183.9282,
+   "y": 52.9118,
+   "length_m": 14.1945,
+   "width_m": 5.1284,
+   "heading_rad": -0.553949
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 259.674,
+   "y": 76.0947,
+   "length_m": 12.7587,
+   "width_m": 5.0617,
+   "heading_rad": 0.448037
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 229.9769,
+   "y": 64.6392,
+   "length_m": 11.118,
+   "width_m": 6.67,
+   "heading_rad": -0.338427
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 232.0365,
+   "y": 65.0211,
+   "length_m": 11.6274,
+   "width_m": 5.8411,
+   "heading_rad": -0.453379
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 269.9073,
+   "y": 56.0669,
+   "length_m": 11.1815,
+   "width_m": 9.4623,
+   "heading_rad": 0.481666
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 272.893,
+   "y": 52.8118,
+   "length_m": 12.6601,
+   "width_m": 5.7383,
+   "heading_rad": 0.543001
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 304.4296,
+   "y": 100.7512,
+   "length_m": 17.742,
+   "width_m": 6.2999,
+   "heading_rad": 0.044134
+  },
+  {
+   "class": "moored_vessel",
+   "primitive": "rect",
+   "x": 223.3383,
+   "y": 108.8974,
+   "length_m": 25.7667,
+   "width_m": 6.9058,
+   "heading_rad": 0.039862
+  },
+  {
+   "class": "moored_vessel",
+   "primitive": "rect",
+   "x": 189.0188,
+   "y": 81.0019,
+   "length_m": 28.4413,
+   "width_m": 8.01,
+   "heading_rad": 0.081822
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 259.9617,
+   "y": 110.1811,
+   "length_m": 15.261,
+   "width_m": 7.2322,
+   "heading_rad": 0.069042
+  },
+  {
+   "class": "moored_vessel",
+   "primitive": "rect",
+   "x": 48.7278,
+   "y": 72.5857,
+   "length_m": 15.0724,
+   "width_m": 4.598,
+   "heading_rad": 0.04072
+  },
+  {
+   "class": "moored_vessel",
+   "primitive": "rect",
+   "x": 348.9346,
+   "y": 79.774,
+   "length_m": 18.4364,
+   "width_m": 3.535,
+   "heading_rad": -0.472032
+  },
+  {
+   "class": "moored_vessel",
+   "primitive": "rect",
+   "x": 20.9941,
+   "y": 92.9538,
+   "length_m": 11.7806,
+   "width_m": 4.5431,
+   "heading_rad": -0.448908
+  },
+  {
+   "class": "moored_vessel",
+   "primitive": "rect",
+   "x": 72.5793,
+   "y": 51.4374,
+   "length_m": 14.4085,
+   "width_m": 3.4159,
+   "heading_rad": 0.215104
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 19.3985,
+   "y": 55.6249,
+   "length_m": 8.8856,
+   "width_m": 7.2934,
+   "heading_rad": 0.964319
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 382.8382,
+   "y": 71.4876,
+   "length_m": 18.6251,
+   "width_m": 6.3324,
+   "heading_rad": 0.92827
+  },
+  {
+   "class": "pier",
+   "primitive": "rect",
+   "x": 67.0337,
+   "y": 95.9287,
+   "length_m": 11.4961,
+   "width_m": 8.1603,
+   "heading_rad": -0.952604
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 236.1401,
+   "y": 89.8462,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 40.3493,
+   "y": 87.9743,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 68.0181,
+   "y": 63.4266,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 172.067,
+   "y": 60.6799,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 377.9664,
+   "y": 94.4304,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 200.0388,
+   "y": 106.0908,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 11.4794,
+   "y": 85.0794,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 55.2216,
+   "y": 43.721,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 271.9963,
+   "y": 75.7365,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 49.0641,
+   "y": 97.5842,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 340.751,
+   "y": 97.058,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 61.8919,
+   "y": 76.2358,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 352.2936,
+   "y": 63.7356,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 8.5182,
+   "y": 45.8141,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 53.221,
+   "y": 84.8313,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 325.79,
+   "y": 98.8825,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 365.9486,
+   "y": 93.9837,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 8.8229,
+   "y": 101.7649,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 331.2492,
+   "y": 66.0709,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 290.8963,
+   "y": 76.301,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 281.7089,
+   "y": 88.1702,
+   "diameter_m": 0.6
+  },
+  {
+   "class": "buoy",
+   "primitive": "circle",
+   "x": 55.2665,
+   "y": 60.4783,
+   "diameter_m": 0.6
+  }
+ ],
+ "traffic": [],
+ "lanes": [
+  {
+   "class": "moving_vessel",
+   "closed": false,
+   "route": [
+    [
+     95.3144,
+     119.817
+    ],
+    [
+     95.7148,
+     112.1879
+    ],
+    [
+     96.5156,
+     96.9295
+    ],
+    [
+     96.5623,
+     95.0377
+    ],
+    [
+     96.5353,
+     93.1321
+    ],
+    [
+     96.4802,
+     91.2226
+    ],
+    [
+     96.4426,
+     89.3192
+    ],
+    [
+     96.4682,
+     87.432
+    ],
+    [
+     96.6025,
+     85.5708
+    ],
+    [
+     96.8912,
+     83.7458
+    ],
+    [
+     97.3515,
+     82.0088
+    ],
+    [
+     97.9657,
+     80.3068
+    ],
+    [
+     98.6981,
+     78.6309
+    ],
+    [
+     99.5127,
+     76.9724
+    ],
+    [
+     100.3737,
+     75.3224
+    ],
+    [
+     101.2451,
+     73.672
+    ],
+    [
+     102.0913,
+     72.0126
+    ],
+    [
+     102.8762,
+     70.3354
+    ],
+    [
+     103.5641,
+     68.6314
+    ],
+    [
+     104.1701,
+     66.7455
+    ],
+    [
+     104.6421,
+     64.824
+    ],
+    [
+     105.0026,
+     62.8729
+    ],
+    [
+     105.2739,
+     60.8985
+    ],
+    [
+     105.4785,
+     58.9068
+    ],
+    [
+     105.6389,
+     56.9041
+    ],
+    [
+     105.7774,
+     54.8964
+    ],
+    [
+     105.9165,
+     52.8898
+    ],
+    [
+     106.0787,
+     50.8905
+    ],
+    [
+     106.2863,
+     48.9046
+    ],
+    [
+     108.1111,
+     33.7347
+    ],
+    [
+     109.0236,
+     26.1497
+    ]
+   ],
+   "speeds_mps": [
+    0.5,
+    0.5,
+    1.4682,
+    1.4555,
+    1.4832,
+    1.4896,
+    1.4619,
+    1.433,
+    1.4028,
+    1.383,
+    1.3999,
+    1.4248,
+    1.4489,
+    1.4721,
+    1.4944,
+    1.4836,
+    1.4612,
+    1.4381,
+    1.4166,
+    1.4197,
+    1.4333,
+    1.4471,
+    1.4608,
+    1.4742,
+    1.4874,
+    1.4996,
+    1.4866,
+    1.4734,
+    1.4822,
+    0.5,
+    0.5
+   ],
+   "offset_s": -3.3317,
+   "vessels": [
+    {
+     "length_m": 4.907,
+     "width_m": 1.2113
+    },
+    {
+     "length_m": 4.0235,
+     "width_m": 1.8101
+    },
+    {
+     "length_m": 11.0129,
+     "width_m": 3.131
+    },
+    {
+     "length_m": 4.7771,
+     "width_m": 1.7882
+    },
+    {
+     "length_m": 13.2793,
+     "width_m": 4.5376
+    }
+   ],
+   "headway_s": 60.0
+  }
+ ]
+}

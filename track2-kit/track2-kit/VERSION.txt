@@ -1,0 +1,4 @@
+usvsim 0.6.2
+commit cd03a05 (uncommitted changes)
+built 2026-10-02 07:10 UTC
+renderer render:6df8866d2b6c

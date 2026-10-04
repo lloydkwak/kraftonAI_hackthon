@@ -1,0 +1,112 @@
+{
+ "format": "t2-2-dataset/1",
+ "n_episodes": 12,
+ "n_records": 1440,
+ "decision_s": 0.5,
+ "raster": {
+  "size_px": 128,
+  "m_per_px": 0.5
+ },
+ "renderer": "render:6df8866d2b6c@77d49e6",
+ "episodes": [
+  {
+   "file": "episodes/ep_00000.npz",
+   "n": 120,
+   "replay": "accel_decel_1000",
+   "group": "accel_decel",
+   "day": "sunny",
+   "severity": 1.0
+  },
+  {
+   "file": "episodes/ep_00001.npz",
+   "n": 120,
+   "replay": "accel_decel_1001",
+   "group": "accel_decel",
+   "day": "fog",
+   "severity": 1.35
+  },
+  {
+   "file": "episodes/ep_00002.npz",
+   "n": 120,
+   "replay": "brake_1000",
+   "group": "brake",
+   "day": "rain",
+   "severity": 1.0
+  },
+  {
+   "file": "episodes/ep_00003.npz",
+   "n": 120,
+   "replay": "brake_1001",
+   "group": "brake",
+   "day": "overcast",
+   "severity": 1.35
+  },
+  {
+   "file": "episodes/ep_00004.npz",
+   "n": 120,
+   "replay": "lowspeed_1000",
+   "group": "lowspeed",
+   "day": "fog",
+   "severity": 1.0
+  },
+  {
+   "file": "episodes/ep_00005.npz",
+   "n": 120,
+   "replay": "lowspeed_1001",
+   "group": "lowspeed",
+   "day": "sunny",
+   "severity": 1.35
+  },
+  {
+   "file": "episodes/ep_00006.npz",
+   "n": 120,
+   "replay": "scurve_1000",
+   "group": "scurve",
+   "day": "overcast",
+   "severity": 1.0
+  },
+  {
+   "file": "episodes/ep_00007.npz",
+   "n": 120,
+   "replay": "scurve_1001",
+   "group": "scurve",
+   "day": "rain",
+   "severity": 1.35
+  },
+  {
+   "file": "episodes/ep_00008.npz",
+   "n": 120,
+   "replay": "straight_1000",
+   "group": "straight",
+   "day": "sunny",
+   "severity": 0.0
+  },
+  {
+   "file": "episodes/ep_00009.npz",
+   "n": 120,
+   "replay": "straight_1001",
+   "group": "straight",
+   "day": "fog",
+   "severity": 0.5
+  },
+  {
+   "file": "episodes/ep_00010.npz",
+   "n": 120,
+   "replay": "turn_1000",
+   "group": "turn",
+   "day": "overcast",
+   "severity": 0.5
+  },
+  {
+   "file": "episodes/ep_00011.npz",
+   "n": 120,
+   "replay": "turn_1001",
+   "group": "turn",
+   "day": "sunny",
+   "severity": 0.0
+  }
+ ],
+ "source": "organisers",
+ "note": "the real-driving library: all 12 released 2-1 replays, one designed day each (every weather at severity 1.0 and 1.35, two light, two clean), observed through the reference camera; no guide vessel; trajectories in ../released.npz; calibration drives shown through the reference camera, not following data",
+ "frames_per_episode": 120
+}
