@@ -1,9 +1,6 @@
 # Kit archives (the unzipped kits are tracked)
 *.zip
 
-# Track 3 dataset: 1.6 GB of video, re-download from the organisers
-track3-kit/track3-kit/dataset/
-
 # Generated / local work
 work/
 **/work/
